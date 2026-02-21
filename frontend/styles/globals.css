@@ -1,0 +1,139 @@
+/* Fonts are imported in _document.js */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+@layer base {
+  body {
+    @apply font-sans text-neutral-800 bg-neutral-50;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-semibold;
+  }
+  h1 {
+    @apply text-3xl md:text-4xl mb-4;
+  }
+  h2 {
+    @apply text-2xl md:text-3xl mb-3;
+  }
+  h3 {
+    @apply text-xl md:text-2xl mb-2;
+  }
+}
+
+@layer components {
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .nav-link {
+    @apply text-white hover:text-white/80 font-medium transition-colors duration-200;
+  }
+
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-light text-white font-medium py-2 px-4 rounded transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary hover:bg-secondary/90 text-white font-medium py-2 px-4 rounded transition-colors duration-200;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold text-primary border-b border-neutral-200 pb-2 mb-6;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md overflow-hidden transition-shadow duration-300 hover:shadow-lg;
+  }
+
+  /* Google Translate Widget Styles */
+  .goog-te-gadget {
+    @apply text-white font-sans;
+  }
+
+  .goog-te-gadget .goog-te-combo {
+    @apply bg-transparent text-white border border-white rounded px-2 py-1 text-sm hover:bg-white hover:text-primary transition-colors cursor-pointer;
+  }
+
+  .goog-te-gadget-simple {
+    @apply bg-transparent !important;
+    border: none !important;
+  }
+
+  .goog-te-gadget-simple span {
+    @apply text-white !important;
+    border: none !important;
+  }
+}
+
+/* Loading animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Text clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Medical card hover effects */
+.group:hover .group-hover\:scale-105 {
+  transform: scale(1.05);
+}
+
+.group:hover .group-hover\:text-blue-300 {
+  color: #93c5fd;
+}
+.article-body a {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  color: #1d4ed8;
+  text-decoration: underline;
+}

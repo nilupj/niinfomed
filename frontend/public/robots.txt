@@ -1,0 +1,78 @@
+# ====================================
+# Global Rules (All Crawlers)
+# ====================================
+User-agent: *
+Crawl-delay: 5
+Allow: /
+
+# ------------------------------------
+# Block sensitive / private areas
+# ------------------------------------
+Disallow: /admin/
+Disallow: /account/
+Disallow: /login
+Disallow: /api/
+
+# ------------------------------------
+# Block internal search & tracking URLs
+# ------------------------------------
+Disallow: /search
+Disallow: /search/
+Disallow: /search?
+Disallow: /*?*utm_
+
+# ------------------------------------
+# Sitemap locations
+# ------------------------------------
+Sitemap: https://Niinfomed.com/sitemap.xml
+Sitemap: https://Niinfomed.com/sitemap-articles.xml
+Sitemap: https://Niinfomed.com/sitemap-conditions.xml
+Sitemap: https://Niinfomed.com/sitemap-news.xml
+Sitemap: https://Niinfomed.com/sitemap-videos.xml
+
+
+# ====================================
+# Major Search Engines (Explicit Allow)
+# ====================================
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-News
+Allow: /
+
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+
+# ====================================
+# AI / Data Scraping Bots (BLOCKED)
+# ====================================
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
