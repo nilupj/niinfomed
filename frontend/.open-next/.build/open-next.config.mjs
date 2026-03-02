@@ -212,8 +212,7 @@ function resolveCdnInvalidation(value = "dummy") {
 
 // open-next.config.ts
 var open_next_config_default = defineCloudflareConfig({
-  incrementalCache: true
-  // Uses the R2 bucket defined in wrangler
+  default: {}
 });
 export {
   open_next_config_default as default

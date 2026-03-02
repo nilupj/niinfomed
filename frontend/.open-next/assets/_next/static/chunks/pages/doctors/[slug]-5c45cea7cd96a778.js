@@ -1,0 +1,1 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[2832],{6956:(_,u,n)=>{(window.__NEXT_P=window.__NEXT_P||[]).push(["/doctors/[slug]",function(){return n(9076)}])},9076:(_,u,n)=>{"use strict";n.r(u),n.d(u,{__N_SSG:()=>s,default:()=>e});var s=!0;function e(){return null}}},_=>{_.O(0,[636,6593,8792],()=>_(_.s=6956)),_N_E=_.O()}]);
