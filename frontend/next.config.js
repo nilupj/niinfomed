@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
+  output: "standalone",   // ⭐ REQUIRED for OpenNext + Cloudflare
+
   reactStrictMode: true,
 
   images: {
@@ -71,8 +73,6 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
     const cleanCMSUrl = CMS_URL.replace(/\/$/, "");
-
-    console.log("🔧 Configuring rewrites with CMS URL:", cleanCMSUrl);
 
     return [
       {
