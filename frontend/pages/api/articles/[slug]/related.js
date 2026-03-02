@@ -66,7 +66,7 @@ const defaultRelated = [
     image: 'https://images.unsplash.com/photo-1490818387583-1baba5e638af?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=250&q=80'
   }
 ];
-export const runtime = "edge";
+export const runtime = "nodejs";
 export default function handler(req, res) {
   const { slug } = req.query;
   const related = relatedArticles[slug] || defaultRelated;

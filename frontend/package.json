@@ -5,15 +5,14 @@
   "scripts": {
     "dev": "next dev -p 5000",
     "build": "next build",
-    "build:cf": "opennextjs-cloudflare",
+    "preview": "opennextjs-cloudflare preview",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare deploy",
     "start": "next start -p 5000",
-    "lint": "next lint",
-    "preview": "npm run build:cf && wrangler pages dev",
-    "pages:build": "npx @cloudflare/next-on-pages"
+    "lint": "next lint"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.16.5",
-    "@sentry/nextjs": "^9.47.1",
     "@tailwindcss/forms": "^0.5.7",
     "@tailwindcss/typography": "^0.5.10",
     "autoprefixer": "^10.4.16",
@@ -32,7 +31,7 @@
     "tailwindcss": "^3.3.5"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
+    "opennextjs-cloudflare": "^1.0.0",
     "wrangler": "^4.67.0"
   }
 }

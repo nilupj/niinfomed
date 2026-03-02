@@ -6,7 +6,7 @@ const paths = [
   'depression',
   'anxiety'
 ];
-export const runtime = "edge";
+export const runtime = "nodejs";
 export default function handler(req, res) {
   res.status(200).json(paths);
 }

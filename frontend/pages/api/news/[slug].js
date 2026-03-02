@@ -1,4 +1,4 @@
-export const runtime = "edge";
+export const runtime = "nodejs";
 const newsArticles = {
   'mediterranean-diet-longevity-study': {
     id: 101,

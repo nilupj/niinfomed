@@ -1,18 +1,12 @@
 /** @type {import('next').NextConfig} */
-const { withSentryConfig } = require("@sentry/nextjs");
 
 const nextConfig = {
   reactStrictMode: true,
 
   images: {
-    // Cloudflare Workers par Next server chalane ke liye 
-    // default image optimization aksar fail ho jati hai.
-    unoptimized: true, // Always true for Cloudflare deployment
-    
+    unoptimized: true,
+
     remotePatterns: [
-      // =========================
-      // Oracle Production CMS (161.118.167.107)
-      // =========================
       {
         protocol: "http",
         hostname: "161.118.167.107",
@@ -23,10 +17,6 @@ const nextConfig = {
         hostname: "161.118.167.107",
         pathname: "/api/**",
       },
-      
-      // =========================
-      // Production CMS (niinfomed) - if you have domain
-      // =========================
       {
         protocol: "https",
         hostname: "api.niinfomed.com",
@@ -37,10 +27,6 @@ const nextConfig = {
         hostname: "niinfomed.com",
         pathname: "/media/**",
       },
-
-      // =========================
-      // Local Development Patterns
-      // =========================
       {
         protocol: "http",
         hostname: "localhost",
@@ -59,10 +45,6 @@ const nextConfig = {
         port: "8001",
         pathname: "/media/**",
       },
-
-      // =========================
-      // External
-      // =========================
       {
         protocol: "https",
         hostname: "images.unsplash.com",
@@ -76,41 +58,31 @@ const nextConfig = {
     ],
   },
 
-  // Add trailing slash handling
   trailingSlash: false,
-  
-  // Enable SWC minification for better performance
+
   swcMinify: true,
 
-  // Compiler options
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
+    removeConsole: process.env.NODE_ENV === "production",
   },
 
   async rewrites() {
-    // Cloudflare environment variables se URL uthayega, 
-    // nahi to Oracle CMS use karega.
-    const CMS_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-    
-    // Clean URL (remove trailing slash)
-    const cleanCMSUrl = CMS_URL.replace(/\/$/, '');
+    const CMS_URL =
+      process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
-    console.log('🔧 Configuring rewrites with CMS URL:', cleanCMSUrl);
+    const cleanCMSUrl = CMS_URL.replace(/\/$/, "");
+
+    console.log("🔧 Configuring rewrites with CMS URL:", cleanCMSUrl);
 
     return [
-      // ✅ Django API (namespaced)
       {
         source: "/cms-api/:path*",
         destination: `${cleanCMSUrl}/api/:path*`,
       },
-      
-      // ✅ Direct API access (for backward compatibility)
       {
         source: "/api/:path*",
         destination: `${cleanCMSUrl}/api/:path*`,
       },
-
-      // ✅ Media files
       {
         source: "/media/:path*",
         destination: `${cleanCMSUrl}/media/:path*`,
@@ -119,14 +91,10 @@ const nextConfig = {
         source: "/cms-media/:path*",
         destination: `${cleanCMSUrl}/media/:path*`,
       },
-      
-      // ✅ Documents
       {
         source: "/documents/:path*",
         destination: `${cleanCMSUrl}/documents/:path*`,
       },
-      
-      // ✅ Wagtail API v2 (if needed)
       {
         source: "/api/v2/:path*",
         destination: `${cleanCMSUrl}/api/v2/:path*`,
@@ -134,49 +102,34 @@ const nextConfig = {
     ];
   },
 
-  // Add headers for CORS and security
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: "/:path*",
         headers: [
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block',
-          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-XSS-Protection", value: "1; mode=block" },
         ],
       },
       {
-        source: '/cms-api/:path*',
+        source: "/cms-api/:path*",
         headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
           {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PUT, DELETE, OPTIONS",
           },
           {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization',
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization",
           },
         ],
       },
     ];
   },
 
-  // Webpack configuration for Cloudflare
   webpack: (config, { isServer }) => {
-    // Cloudflare Workers don't support Node.js modules
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -189,15 +142,4 @@ const nextConfig = {
   },
 };
 
-// Sentry configuration for Cloudflare/Edge
-const sentryConfig = {
-  silent: true,
-  // Cloudflare Workers ke liye zaroori settings:
-  hideSourceMaps: true,
-  widenClientFileUpload: true,
-  disableLogger: true,
-  // Automatically tree-shake Sentry logger statements
-  transpileClientSDK: true,
-};
-
-module.exports = withSentryConfig(nextConfig, sentryConfig);
+module.exports = nextConfig;

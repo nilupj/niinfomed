@@ -2,7 +2,6 @@
 // The added config here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 export const runtime = "edge";
-import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: "https://6ed21ae962853ff4b1e91a320122b500@o4509084075491328.ingest.us.sentry.io/4509084077719552",

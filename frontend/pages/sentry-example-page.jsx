@@ -1,5 +1,4 @@
 import Head from "next/head";
-import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
 
 class SentryExampleFrontendError extends Error {
