@@ -2,9 +2,17 @@
   "name": "niinfomed",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-02-21",
-  "compatibility_flags": ["nodejs_compat"],
+
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
+  },
+
+  "vars": {
+    "NEXT_PUBLIC_CMS_API_URL": "http://161.118.167.107"
   }
 }
