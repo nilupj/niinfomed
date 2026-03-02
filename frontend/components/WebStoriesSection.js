@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
-
+export const runtime = "edge";
 const WebStoriesSection = () => {
   const [stories, setStories] = useState([]);
   const [loading, setLoading] = useState(true);

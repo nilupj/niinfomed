@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
-
+export const runtime = "edge";
 export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import translations from '../utils/translations';
 import { useState, useEffect } from 'react';
-
+export const runtime = "edge";
 export default function Footer() {
   const currentYear = new Date().getFullYear();
   const [t, setT] = useState(translations.en);

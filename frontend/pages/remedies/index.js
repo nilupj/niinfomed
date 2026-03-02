@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SEO from '../../components/SEO';
 import { fetchRemedyArticles } from '../../utils/api';
-
 export default function RemediesIndex() {
   const [remedies, setRemedies] = useState([]);
   const [loading, setLoading] = useState(true);

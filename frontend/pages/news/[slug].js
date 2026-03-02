@@ -9,77 +9,59 @@ import { fetchNewsBySlug, fetchRelatedNews } from "../../utils/api";
 import Head from "next/head";
 
 /* =========================================================
-   ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
+   ✅ FIXED: Use Oracle CMS URL instead of localhost
 ========================================================= */
 const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
-
-    base = base
-      .replace("0.0.0.0", frontendHost)
-      .replace("127.0.0.1", frontendHost)
-      .replace("localhost", frontendHost);
+    
+    // Only replace if the base contains localhost/127.0.0.1
+    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
+      base = base
+        .replace("0.0.0.0", frontendHost)
+        .replace("127.0.0.1", frontendHost)
+        .replace("localhost", frontendHost);
+    }
   }
 
   return base;
 };
 
 // ⚠️ For SSR/SSG use env directly (build time)
-const CMS_API_URL =
-  process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
    ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const fixMediaUrls = (html) => {
   if (!html) return "";
 
-  return (
-    html
-      .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
-
-      .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/127\.0\.0\.1:8001\/media\//g, "src='/cms-media/")
-
-      .replace(/src="http:\/\/localhost:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/localhost:8001\/media\//g, "src='/cms-media/")
-
-      .replace(/src="\/media\//g, 'src="/cms-media/')
-      .replace(/src='\/media\//g, "src='/cms-media/")
-
-      .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
-      .replace(/srcset='\/media\//g, "srcset='/cms-media/")
-
-      .replace(
-        /srcset="http:\/\/0\.0\.0\.0:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/0\.0\.0\.0:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
-      .replace(
-        /srcset="http:\/\/127\.0\.0\.1:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/127\.0\.0\.1:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
-      .replace(
-        /srcset="http:\/\/localhost:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/localhost:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
-
-      .replace(/\/cms-media\/media\//g, "/cms-media/")
-  );
+  return html
+    // Oracle CMS patterns
+    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
+    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
+    .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
+    .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
+    .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
+    .replace(/src='http:\/\/127\.0\.0\.1:8001\/media\//g, "src='/cms-media/")
+    .replace(/src="http:\/\/localhost:8001\/media\//g, 'src="/cms-media/')
+    .replace(/src='http:\/\/localhost:8001\/media\//g, "src='/cms-media/")
+    .replace(/src="\/media\//g, 'src="/cms-media/')
+    .replace(/src='\/media\//g, "src='/cms-media/")
+    .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='http:\/\/127\.0\.0\.1:8001\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="http:\/\/localhost:8001\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='http:\/\/localhost:8001\/media\//g, "srcset='/cms-media/")
+    .replace(/\/cms-media\/media\//g, "/cms-media/");
 };
 
 /* =========================================================
@@ -98,9 +80,17 @@ const optimizeImageUrl = (url, width = 1200) => {
 
 /* =========================================================
    ✅ Helper: Single image URL fix
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
+
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url
+      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
+      .replace('/cms-media/media/', '/cms-media/');
+  }
 
   if (url.startsWith("http://0.0.0.0:8001")) {
     return url
@@ -226,6 +216,8 @@ const fetchWagtailPageById = async (id, safeBaseUrl) => {
 };
 
 const buildFrontendUrlFromWagtailPage = (pageData) => {
+  if (!pageData) return "#";
+  
   const type = (pageData?.meta?.type || "").toLowerCase();
   const slug = pageData?.meta?.slug || pageData?.slug;
 
@@ -237,7 +229,8 @@ const buildFrontendUrlFromWagtailPage = (pageData) => {
   if (type.includes("wellness")) return `/wellness/${slug}`;
   if (type.includes("yoga")) return `/yoga-exercise/${slug}`;
   if (type.includes("article")) return `/articles/${slug}`;
-  if (type.includes("conditions")) return `/conditions/${slug}`;
+  if (type.includes("condition")) return `/conditions/${slug}`;
+  if (type.includes("drug")) return `/drugs/${slug}`;
 
   return `/${slug}`;
 };
@@ -247,26 +240,37 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
 
   let updated = html;
 
-  const ids = extractInternalPageLinkIds(updated);
+  try {
+    const ids = extractInternalPageLinkIds(updated);
 
-  for (const id of ids) {
-    const pageData = await fetchWagtailPageById(id, safeBaseUrl);
+    for (const id of ids) {
+      const pageData = await fetchWagtailPageById(id, safeBaseUrl);
+      const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
 
-    const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
+      updated = updated.replace(
+        new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
+        `<a$1$2href="${url}"$3>`
+      );
+    }
 
+    // Fix document links
     updated = updated.replace(
-      new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-      `<a$1$2href="${url}" target="_blank" rel="noopener noreferrer"$3>`
+      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
+      `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
     );
+
+    // Remove leftover wagtail attributes
+    updated = updated.replace(/linktype="[^"]*"/g, "");
+    updated = updated.replace(/\s?id="\d+"/g, "");
+
+    // Make external links open in new tab
+    updated = updated.replace(
+      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
+      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
+    );
+  } catch (error) {
+    console.error("Error fixing internal links:", error);
   }
-
-  updated = updated.replace(
-    /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-    `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-  );
-
-  updated = updated.replace(/linktype="[^"]*"/g, "");
-  updated = updated.replace(/\s?id="\d+"/g, "");
 
   return updated;
 };
@@ -289,6 +293,7 @@ const extractHeadings = (html) => {
   return matches.map((m) => ({
     level: Number(m[1]),
     text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
+    id: slugify(m[2].replace(/<\/?[^>]+(>|$)/g, "").trim())
   }));
 };
 
@@ -297,11 +302,11 @@ const addHeadingIds = (html, headings) => {
 
   let updated = html;
   headings.forEach((h) => {
-    const id = slugify(h.text);
-
+    if (!h.id) return;
+    
     updated = updated.replace(
       new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${id}">${h.text}</h${h.level}>`
+      `<h${h.level}$1 id="${h.id}">${h.text}</h${h.level}>`
     );
   });
 
@@ -460,7 +465,7 @@ export default function NewsArticle({
   const router = useRouter();
 
   const [pageArticle, setPageArticle] = useState(initialArticle);
-  const [relatedArticles, setRelatedArticles] = useState(initialRelated);
+  const [relatedArticles, setRelatedArticles] = useState(initialRelated || []);
   const [loading, setLoading] = useState(!initialArticle);
   const [contentLoaded, setContentLoaded] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
@@ -574,10 +579,11 @@ export default function NewsArticle({
       setPageArticle(data);
       
       try {
-        const relatedRes = await fetch(`${safeCMS}/api/news/related/${router.query.slug}/`);
+        const relatedRes = await fetch(`${safeCMS}/api/news/?limit=6`);
         if (relatedRes.ok) {
           const relatedData = await relatedRes.json();
-          setRelatedArticles(relatedData);
+          const relatedList = Array.isArray(relatedData) ? relatedData : (relatedData.results || []);
+          setRelatedArticles(relatedList.filter(v => v.slug !== router.query.slug).slice(0, 3));
         }
       } catch (e) {
         console.error("Failed to fetch related articles:", e);
@@ -673,8 +679,8 @@ export default function NewsArticle({
         />
         
         <link rel="preconnect" href="https://images.unsplash.com" />
-        {mainImageUrl.includes('localhost') && (
-          <link rel="preconnect" href={new URL(mainImageUrl).origin} />
+        {mainImageUrl.includes('161.118.167.107') && (
+          <link rel="preconnect" href="http://161.118.167.107" />
         )}
         
         {/* Schema.org markup for citations */}
@@ -1009,7 +1015,7 @@ export default function NewsArticle({
 
                         return (
                           <Link
-                            key={related.id}
+                            key={related.id || related.slug}
                             href={`/news/${related.slug}`}
                             className="block group"
                             prefetch={false}
@@ -1086,7 +1092,7 @@ export default function NewsArticle({
 
                   return (
                     <Link
-                      key={related.id}
+                      key={related.id || related.slug}
                       href={`/news/${related.slug}`}
                       className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                       prefetch={false}
@@ -1129,17 +1135,16 @@ export default function NewsArticle({
 ========================================================= */
 export async function getStaticPaths() {
   try {
-    const apiUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    console.log("🔍 Fetching news paths from:", `${apiUrl}/api/news/paths`);
 
-    const safeApiUrl = apiUrl.replace("0.0.0.0", "127.0.0.1");
-
-    const res = await fetch(`${safeApiUrl}/api/news/paths`);
+    const res = await fetch(`${apiUrl}/api/news/paths`);
     if (!res.ok) throw new Error(`Failed to fetch paths: ${res.status}`);
 
     const slugs = await res.json();
     const paths = slugs.map((slug) => ({ params: { slug } }));
 
+    console.log(`✅ Found ${paths.length} news paths`);
     return { paths, fallback: "blocking" };
   } catch (error) {
     console.error("Error fetching news paths:", error);
@@ -1150,6 +1155,7 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params, locale }) {
   try {
     const start = Date.now();
+    console.log(`📡 Fetching news article: ${params.slug} from Oracle CMS`);
     
     const [article, relatedArticles] = await Promise.all([
       fetchNewsBySlug(params.slug, locale),
@@ -1158,7 +1164,7 @@ export async function getStaticProps({ params, locale }) {
     
     if (!article) return { notFound: true };
     
-    const safeCMS = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+    const safeCMS = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     
     let processedBody = "";
     let processedReferences = "";
@@ -1185,7 +1191,7 @@ export async function getStaticProps({ params, locale }) {
     return {
       props: { 
         article,
-        relatedArticles,
+        relatedArticles: relatedArticles || [],
         processedBody,
         processedReferences,
         headings,

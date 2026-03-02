@@ -1,6 +1,5 @@
 import { useSession } from 'next-auth/react';
 import AccountLayout from '../../components/AccountLayout';
-
 export default function AccountPage() {
   const { data: session } = useSession();
 

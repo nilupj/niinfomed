@@ -1,6 +1,6 @@
 
 import Link from 'next/link';
-
+export const runtime = "edge";
 export default function ContentNav({ items = [], activeItem = '' }) {
   return (
     <nav className="border-b border-neutral-200 mb-6 overflow-x-auto">

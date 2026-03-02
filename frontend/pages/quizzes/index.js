@@ -1,5 +1,4 @@
 import QuizCard from '../../components/QuizCard';
-
 export default function QuizzesPage() {
   const quizzes = [
     {

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import Link from 'next/link';
-
 export default function AuthorProfile() {
   const router = useRouter();
   const { slug } = router.query;

@@ -1,6 +1,5 @@
 
 import Head from 'next/head';
-
 export function ArticleStructuredData({ article }) {
   const structuredData = {
     "@context": "https://schema.org",

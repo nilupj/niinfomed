@@ -1,3 +1,4 @@
+export const runtime = "edge";
 const allArticles = [
   {
     id: 1,

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import SEO from '../components/SEO';
-
 export default function SymptomChecker() {
   const [step, setStep] = useState(1);
   const [selectedSymptoms, setSelectedSymptoms] = useState([]);

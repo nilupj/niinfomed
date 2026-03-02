@@ -3,7 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
-
+export const runtime = "edge";
 Sentry.init({
   dsn: "https://6ed21ae962853ff4b1e91a320122b500@o4509084075491328.ingest.us.sentry.io/4509084077719552",
 

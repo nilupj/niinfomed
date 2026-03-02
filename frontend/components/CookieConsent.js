@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-
+export const runtime = "edge";
 export default function CookieConsent() {
   const [showBanner, setShowBanner] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

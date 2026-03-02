@@ -1,7 +1,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-
+export const runtime = "edge";
 export default function QuizCard({ quiz }) {
   const { title, slug, image, description } = quiz;
   

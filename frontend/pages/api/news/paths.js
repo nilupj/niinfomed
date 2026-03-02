@@ -5,7 +5,7 @@ const paths = [
   { slug: 'mental-health-apps-anxiety-study' },
   { slug: 'sleep-quality-vs-duration-study' }
 ];
-
+export const runtime = "edge";
 export default function handler(req, res) {
   res.status(200).json(paths);
 }

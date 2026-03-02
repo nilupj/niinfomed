@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-
+export const runtime = "edge";
 export default function SocialMediaSection() {
   const [activeTab, setActiveTab] = useState('all');
   const [videoSlideIndex, setVideoSlideIndex] = useState(0);

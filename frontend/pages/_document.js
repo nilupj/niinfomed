@@ -12,6 +12,7 @@ const LOCALE_LANG_MAP = {
   "/es": "es-ES",
 };
 
+
 export default function Document(props) {
   const { __NEXT_DATA__ } = props;
   const pathname = __NEXT_DATA__?.page || "";

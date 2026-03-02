@@ -6,7 +6,6 @@ const drugs = [
   { id: 5, title: 'Atorvastatin', slug: 'atorvastatin', generic_name: 'Atorvastatin', brand_names: ['Lipitor'], drug_class: 'Statin', meta: { slug: 'atorvastatin' } },
   { id: 6, title: 'Omeprazole', slug: 'omeprazole', generic_name: 'Omeprazole', brand_names: ['Prilosec'], drug_class: 'Proton Pump Inhibitor', meta: { slug: 'omeprazole' } }
 ];
-
 export default function handler(req, res) {
   res.status(200).json(drugs);
 }

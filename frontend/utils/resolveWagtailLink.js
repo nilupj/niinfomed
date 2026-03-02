@@ -5,7 +5,7 @@ const CMS_API_URL =
   process.env.NEXT_PUBLIC_CMS_API_URL || 'http://127.0.0.1:8001';
 
 const pageCache = new Map();
-
+export const runtime = "edge";
 export async function resolveWagtailPageUrl(id) {
   if (!id) return '#';
   if (pageCache.has(id)) return pageCache.get(id);

@@ -1,5 +1,4 @@
 import AccountLayout from '../../components/AccountLayout';
-
 export default function SavedContentPage() {
   return (
     <AccountLayout>

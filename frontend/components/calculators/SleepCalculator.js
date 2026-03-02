@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function SleepCalculator() {
   const [wakeTime, setWakeTime] = useState('');
   const [age, setAge] = useState('');

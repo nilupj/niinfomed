@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { NextSeo } from 'next-seo';
 import { fetchWellnessTopics } from '../utils/api';
-
 export default function WellBeing({ topics, categories }) {
   const [activeLetter, setActiveLetter] = useState('all');
   const [groupedTopics, setGroupedTopics] = useState({});

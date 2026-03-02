@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function NotificationSubscribe() {
   const [subscribed, setSubscribed] = useState(false);
   const [email, setEmail] = useState('');

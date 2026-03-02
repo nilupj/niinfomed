@@ -1,6 +1,6 @@
 
 import Image from 'next/image';
-
+export const runtime = "edge";
 /**
  * Google Discover Optimized Image Component
  * 

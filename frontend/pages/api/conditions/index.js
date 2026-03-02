@@ -8,7 +8,7 @@ const conditions = [
   { id: 7, title: 'Cancer', slug: 'cancer', letter: 'C', summary: 'A group of diseases involving abnormal cell growth.' },
   { id: 8, title: 'Heart Disease', slug: 'heart-disease', letter: 'H', summary: 'A range of conditions that affect the heart.' }
 ];
-
+export const runtime = "edge";
 export default function handler(req, res) {
   res.status(200).json(conditions);
 }

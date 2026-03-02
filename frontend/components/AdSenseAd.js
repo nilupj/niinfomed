@@ -1,6 +1,6 @@
 
 import { useEffect } from 'react';
-
+export const runtime = "edge";
 export default function AdSenseAd({ 
   adSlot, 
   adFormat = 'auto',

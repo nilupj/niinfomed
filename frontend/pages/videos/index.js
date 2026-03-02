@@ -11,7 +11,6 @@ import { NextSeo } from 'next-seo';
 const CMS_API_URL =
   process.env.NEXT_PUBLIC_CMS_API_URL ||
   `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8001`;
-
 export default function VideosIndex() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 
 import Link from 'next/link';
-
+export const runtime = "edge";
 const AuthorCard = ({ author, label = 'Written by', isReviewer = false, authorType = 'author' }) => {
   if (!author) return null;
 

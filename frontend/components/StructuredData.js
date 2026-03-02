@@ -1,8 +1,7 @@
 import Head from 'next/head';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://healthinfo.com';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://niinfomed.com';
 const SITE_NAME = 'HealthInfo';
-
 export function OrganizationStructuredData({ name, url, logo, description, email, telephone }) {
   const structuredData = {
     "@context": "https://schema.org",
@@ -25,10 +24,10 @@ export function OrganizationStructuredData({ name, url, logo, description, email
       "availableLanguage": ["English", "Hindi"]
     },
     "sameAs": [
-      "https://facebook.com/healthinfo",
-      "https://twitter.com/healthinfo",
-      "https://instagram.com/healthinfo",
-      "https://linkedin.com/company/healthinfo"
+      "https://facebook.com/niinfomed",
+      "https://twitter.com/niinfomed",
+      "https://instagram.com/niinfomed",
+      "https://linkedin.com/company/niinfomed"
     ]
   };
 

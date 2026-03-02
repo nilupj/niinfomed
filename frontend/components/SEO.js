@@ -1,5 +1,5 @@
 import Head from 'next/head';
-
+export const runtime = "edge";
 export default function SEO({
   title,
   description,

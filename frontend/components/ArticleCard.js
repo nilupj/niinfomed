@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
-
+export const runtime = "edge";
 const ArticleCard = ({ article, variant = 'default' }) => {
   const formatDate = (dateString) => {
     if (!dateString) return '';

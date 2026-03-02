@@ -11,21 +11,23 @@ import {
 import CommentSection from '../../components/CommentSection';
 import ReferencesSection from '../../components/ReferencesSection';
 
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
 /* =========================================================
-   ✅ FIX: Network Error - Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
+   ✅ FIX: Use Oracle CMS URL instead of localhost
 ========================================================= */
 const getSafeApiUrl = () => {
-  // Default API URL from environment or localhost
-  let base = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001";
+  // Use environment variable with fallback to Oracle CMS
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
-  // Only adjust for client-side rendering
+  // Only adjust for client-side rendering when accessing from other devices
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
-    const frontendProtocol = window.location.protocol;
     
     console.log("🌐 Frontend location:", { 
       hostname: frontendHost, 
-      protocol: frontendProtocol,
+      protocol: window.location.protocol,
       port: window.location.port 
     });
 
@@ -34,15 +36,8 @@ const getSafeApiUrl = () => {
         frontendHost !== "127.0.0.1" && 
         frontendHost !== "0.0.0.0") {
       
-      // If API is on same domain but different port (for development)
-      // Use the same protocol and hostname as frontend
-      const newBase = `${frontendProtocol}//${frontendHost}:8001`;
-      
-      console.log("🔄 Adjusting API URL for external access:", { 
-        from: base, 
-        to: newBase 
-      });
-      base = newBase;
+      // Keep using Oracle CMS URL for external access
+      console.log("🔄 Using Oracle CMS URL for external access:", base);
     } else {
       // For local development, replace problematic addresses
       base = base
@@ -57,12 +52,17 @@ const getSafeApiUrl = () => {
 };
 
 /* =========================================================
-   ENHANCED: Media URL Fix Functions - Optimized version
+   ✅ MEDIA URL FIX FUNCTIONS - Updated for Oracle CMS
 ========================================================= */
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
 
-  // Create a map of replacements for cleaner code
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  }
+
+  // Handle localhost patterns
   const replacements = {
     'http://0.0.0.0:8001': '/cms-media',
     'http://127.0.0.1:8001': '/cms-media',
@@ -72,14 +72,12 @@ const getProxiedImageUrl = (url) => {
 
   let newUrl = url;
   
-  // Apply replacements
   Object.entries(replacements).forEach(([pattern, replacement]) => {
     if (newUrl.includes(pattern)) {
       newUrl = newUrl.replace(pattern, replacement);
     }
   });
 
-  // Clean up any double cms-media paths
   newUrl = newUrl.replace(/\/cms-media\/media\//g, '/cms-media/');
   
   return newUrl;
@@ -88,8 +86,8 @@ const getProxiedImageUrl = (url) => {
 const fixMediaUrls = (html) => {
   if (!html) return '';
 
-  // Use a single replace with multiple patterns for better performance
   const patterns = [
+    [/(src="|src=')https?:\/\/161\.118\.167\.107\/media\//g, '$1/cms-media/'],
     [/(src="|src=')http:\/\/0\.0\.0\.0:8001\/media\//g, '$1/cms-media/'],
     [/(src="|src=')http:\/\/127\.0\.0\.1:8001\/media\//g, '$1/cms-media/'],
     [/(src="|src=')http:\/\/localhost:8001\/media\//g, '$1/cms-media/'],
@@ -106,14 +104,9 @@ const fixMediaUrls = (html) => {
 };
 
 /* =========================================================
-   ENHANCED: Wagtail URL Transformation Functions
+   ✅ WAGTAIL URL TRANSFORMATION FUNCTIONS
 ========================================================= */
 
-/**
- * TRANSFORM WAGTAIL URL TO NEXT.JS ROUTE - ULTIMATE VERSION
- * Handles: http://localhost:5000/all-homeopathic-pages/9-worst-habits-for-muscles
- * Result: /homeopathy/9-worst-habits-for-muscles
- */
 const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   if (!wagtailUrl || wagtailUrl === "#") return "#";
   
@@ -130,114 +123,29 @@ const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
     path = '/' + path;
   }
   
-  console.log("📝 Path after removing domain:", path);
-  
-  // SPECIAL CASE MAPPING - Direct transformations for known patterns
-  const directMappings = {
-    // Drug-specific patterns
+  // Drug-specific patterns
+  const drugMappings = {
     '/all-drugs-a-z-pages/all-drugs-pages/drugs/': '/drugs/',
     '/all-drugs-pages/drugs/': '/drugs/',
     '/all-drugs-a-z-pages/': '/drugs/',
     '/all-drugs/': '/drugs/',
-    
-    // Other content types
-    '/all-homeopathic-pages/': '/homeopathy/',
-    '/all-homeopathy/': '/homeopathy/',
-    '/all-ayurvedic-pages/': '/ayurveda/',
-    '/all-ayurveda/': '/ayurveda/',
-    '/all-news-pages/': '/news/',
-    '/all-news/': '/news/',
-    '/all-wellness-pages/': '/wellness/',
-    '/all-wellness/': '/wellness/',
-    '/all-conditions-a-z/conditions/condition/': '/conditions/',
-    '/all-conditions-a-z/': '/conditions/',
-    '/all-conditions/': '/conditions/',
-    '/all-yoga-pages/': '/yoga-exercise/',
-    '/all-yoga/': '/yoga-exercise/',
-    '/all-article-pages/': '/articles/',
-    '/all-articles/': '/articles/',
   };
   
-  // Check for exact matches first
-  for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
-    if (path === wagtailPattern) {
-      console.log(`✅ Exact match: ${path} → ${nextRoute}`);
-      return nextRoute;
-    }
-  }
-  
-  // Check for pattern matches
-  for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
+  // Check for drug pattern matches
+  for (const [wagtailPattern, nextRoute] of Object.entries(drugMappings)) {
     if (path.startsWith(wagtailPattern)) {
-      // Extract the slug part after the pattern
       const slug = path.replace(wagtailPattern, '');
       if (slug) {
-        const finalRoute = nextRoute.endsWith('/') 
-          ? `${nextRoute}${slug}`
-          : `${nextRoute}/${slug}`;
-        console.log(`✅ Pattern match: ${path} → ${finalRoute}`);
+        const finalRoute = `${nextRoute}${slug}`;
+        console.log(`✅ Drug pattern match: ${path} → ${finalRoute}`);
         return finalRoute;
       }
     }
   }
   
-  // DYNAMIC TRANSFORMATION - Handle any "all-*" pattern
-  if (path.includes('/all-')) {
-    const parts = path.split('/').filter(p => p);
-    
-    // Find the "all-*" part
-    const allIndex = parts.findIndex(p => p.startsWith('all-'));
-    
-    if (allIndex !== -1) {
-      const allPart = parts[allIndex];
-      
-      // Map "all-*" to category
-      const categoryMap = {
-        'all-homeopathic-pages': 'homeopathy',
-        'all-homeopathy': 'homeopathy',
-        'all-ayurvedic-pages': 'ayurveda',
-        'all-ayurveda': 'ayurveda',
-        'all-news-pages': 'news',
-        'all-news': 'news',
-        'all-wellness-pages': 'wellness',
-        'all-wellness': 'wellness',
-        'all-conditions-a-z': 'conditions',
-        'all-conditions': 'conditions',
-        'all-drugs-a-z-pages': 'drugs',
-        'all-drugs-pages': 'drugs',
-        'all-drugs': 'drugs',
-        'all-yoga-pages': 'yoga-exercise',
-        'all-yoga': 'yoga-exercise',
-        'all-article-pages': 'articles',
-        'all-articles': 'articles'
-      };
-      
-      const category = categoryMap[allPart];
-      
-      if (category) {
-        // Get the last part as slug
-        const slug = parts[parts.length - 1];
-        
-        // Skip if slug is the same as category or empty
-        if (slug && slug !== category && !slug.startsWith('all-')) {
-          const finalRoute = `/${category}/${slug}`;
-          console.log(`✅ Dynamic transformation: ${path} → ${finalRoute}`);
-          return finalRoute;
-        }
-      }
-    }
-  }
-  
   // If it's already a clean route, return it
-  if (path.startsWith('/homeopathy/') || 
-      path.startsWith('/ayurveda/') || 
-      path.startsWith('/news/') || 
-      path.startsWith('/wellness/') || 
-      path.startsWith('/conditions/') || 
-      path.startsWith('/drugs/') || 
-      path.startsWith('/articles/') || 
-      path.startsWith('/yoga-exercise/')) {
-    console.log(`✅ Already clean route: ${path}`);
+  if (path.startsWith('/drugs/')) {
+    console.log(`✅ Already clean drug route: ${path}`);
     return path;
   }
   
@@ -245,9 +153,6 @@ const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   return "#";
 };
 
-/**
- * Extract internal page link IDs from HTML
- */
 const extractInternalPageLinkIds = (html = "") => {
   if (!html) return [];
 
@@ -260,9 +165,6 @@ const extractInternalPageLinkIds = (html = "") => {
   return matches.map(m => Number(m[1] || m[2]));
 };
 
-/**
- * Extract ALL href URLs from HTML (including those without linktype)
- */
 const extractAllHrefUrls = (html = "") => {
   if (!html) return [];
   
@@ -270,16 +172,11 @@ const extractAllHrefUrls = (html = "") => {
   return matches.map(m => m[1]);
 };
 
-/**
- * Fetch Wagtail page by ID - With error handling
- */
 const fetchWagtailPageById = async (id, apiBaseUrl) => {
   try {
     console.log(`🔍 Fetching Wagtail page for ID: ${id} from ${apiBaseUrl}`);
     
-    // Use the safe API URL for client-side requests
-    const safeUrl = apiBaseUrl || getSafeApiUrl();
-    const url = `${safeUrl}/api/v2/pages/${id}/`;
+    const url = `${apiBaseUrl}/api/v2/pages/${id}/`;
     
     const res = await fetch(url, {
       headers: {
@@ -300,9 +197,6 @@ const fetchWagtailPageById = async (id, apiBaseUrl) => {
   }
 };
 
-/**
- * Build frontend URL from Wagtail page data
- */
 const buildFrontendUrlFromWagtailPage = (pageData) => {
   if (!pageData) return "#";
 
@@ -319,26 +213,19 @@ const buildFrontendUrlFromWagtailPage = (pageData) => {
 
   // Check if slug is a full URL
   if (slug.includes('http://') || slug.includes('https://') || slug.includes('localhost')) {
-    // Transform the full URL
     const transformed = transformWagtailUrlToNextRoute(slug);
-    console.log(`✅ Transformed full URL: ${slug} → ${transformed}`);
-    return transformed;
-  }
-
-  // Check if slug contains "all-" patterns
-  if (slug.includes('all-')) {
-    const transformed = transformWagtailUrlToNextRoute(`/${slug}`);
     if (transformed !== "#") {
-      console.log(`✅ Transformed slug pattern: ${slug} → ${transformed}`);
       return transformed;
     }
   }
 
   // Fallback to type-based mapping
   let category = "";
-  if (type.includes("homeopathy") || type.includes("homeopathic")) {
+  if (type.includes("drug")) {
+    category = "drugs";
+  } else if (type.includes("homeopathy")) {
     category = "homeopathy";
-  } else if (type.includes("ayurveda") || type.includes("ayurvedic")) {
+  } else if (type.includes("ayurveda")) {
     category = "ayurveda";
   } else if (type.includes("article")) {
     category = "articles";
@@ -346,15 +233,12 @@ const buildFrontendUrlFromWagtailPage = (pageData) => {
     category = "news";
   } else if (type.includes("condition")) {
     category = "conditions";
-  } else if (type.includes("drug")) {
-    category = "drugs";
   } else if (type.includes("wellness")) {
     category = "wellness";
-  } else if (type.includes("yoga") || type.includes("exercise")) {
+  } else if (type.includes("yoga")) {
     category = "yoga-exercise";
   }
 
-  // Extract just the last part of slug as the actual content slug
   const slugParts = slug.split('/').filter(p => p);
   const contentSlug = slugParts[slugParts.length - 1] || "";
 
@@ -368,47 +252,34 @@ const buildFrontendUrlFromWagtailPage = (pageData) => {
   return "#";
 };
 
-/**
- * ULTIMATE FIX FOR WAGTAIL INTERNAL LINKS
- * This handles both linktype="page" links AND raw href URLs
- */
 const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
   if (!html) return html;
 
-  console.log("🛠️ Starting comprehensive Wagtail link fix...");
+  console.log("🛠️ Starting Wagtail link fix...");
   
   let updatedHtml = html;
 
   try {
-    // PHASE 1: Fix links with linktype="page"
+    // Fix links with linktype="page"
     const pageIds = extractInternalPageLinkIds(updatedHtml);
     
     if (pageIds.length > 0) {
-      console.log(`🔗 Found ${pageIds.length} page link IDs:`, [...new Set(pageIds)]);
+      console.log(`🔗 Found ${pageIds.length} page link IDs`);
       
-      // Create a map to store page data
       const pageMap = new Map();
-
-      // Fetch all pages in parallel with error handling
       const fetchPromises = pageIds.map(async (id) => {
-        try {
-          const pageData = await fetchWagtailPageById(id, apiBaseUrl);
-          if (pageData) {
-            pageMap.set(id, pageData);
-          }
-        } catch (error) {
-          console.warn(`Failed to fetch page ${id}:`, error);
+        const pageData = await fetchWagtailPageById(id, apiBaseUrl);
+        if (pageData) {
+          pageMap.set(id, pageData);
         }
       });
 
       await Promise.all(fetchPromises);
 
-      // Replace all page links
       pageIds.forEach((id) => {
         const pageData = pageMap.get(id);
         const frontendUrl = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
 
-        // Create a regex to find the specific anchor tag with this ID
         const regex = new RegExp(
           `(<a[^>]*(?:linktype="page"[^>]*id="${id}"|id="${id}"[^>]*linktype="page")[^>]*?)>`,
           "g"
@@ -416,25 +287,18 @@ const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
 
         updatedHtml = updatedHtml.replace(regex, `$1 href="${frontendUrl}">`);
       });
-      
-      console.log("✅ Phase 1: Fixed linktype='page' links");
     }
 
-    // PHASE 2: Fix document links
-    const safeUrl = apiBaseUrl || getSafeApiUrl();
+    // Fix document links
     updatedHtml = updatedHtml.replace(
       /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-      `<a$1href="${safeUrl}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
+      `<a$1href="${apiBaseUrl}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
     );
 
-    // PHASE 3: Fix ALL href attributes that contain wagtail patterns
-    console.log("🔍 Scanning for raw wagtail URLs in href attributes...");
-    
-    // Get all href values
+    // Transform raw wagtail URLs
     const allHrefs = extractAllHrefUrls(updatedHtml);
-    
-    // Filter for wagtail patterns
     const wagtailHrefs = allHrefs.filter(href => 
+      href.includes('all-drugs') || 
       href.includes('all-') || 
       href.includes('localhost') || 
       href.includes('127.0.0.1') ||
@@ -442,120 +306,28 @@ const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
     );
     
     if (wagtailHrefs.length > 0) {
-      console.log(`🔄 Found ${wagtailHrefs.length} raw wagtail URLs to transform:`, wagtailHrefs);
-      
-      // Transform each wagtail URL
       wagtailHrefs.forEach(wagtailUrl => {
         const transformedUrl = transformWagtailUrlToNextRoute(wagtailUrl);
         
         if (transformedUrl !== "#" && transformedUrl !== wagtailUrl) {
-          console.log(`🔄 Replacing: ${wagtailUrl} → ${transformedUrl}`);
-          
-          // Escape special regex characters in the URL
           const escapedUrl = wagtailUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`href="${escapedUrl}"`, 'g');
-          
           updatedHtml = updatedHtml.replace(regex, `href="${transformedUrl}"`);
         }
       });
-      
-      console.log("✅ Phase 3: Transformed raw wagtail URLs");
     }
 
-    // PHASE 4: Fix specific known patterns with regex
-    console.log("🔍 Applying pattern-based transformations...");
-    
-    const patternReplacements = [
-      // Homeopathy
-      { pattern: /href="[^"]*\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
-      { pattern: /href="[^"]*\/all-homeopathy\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
-      
-      // Ayurveda
-      { pattern: /href="[^"]*\/all-ayurvedic-pages\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
-      { pattern: /href="[^"]*\/all-ayurveda\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
-      
-      // News
-      { pattern: /href="[^"]*\/all-news-pages\/([^"]+)"/g, replacement: 'href="/news/$1"' },
-      { pattern: /href="[^"]*\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
-      
-      // Wellness
-      { pattern: /href="[^"]*\/all-wellness-pages\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
-      { pattern: /href="[^"]*\/all-wellness\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
-      
-      // Conditions
-      { pattern: /href="[^"]*\/all-conditions-a-z\/conditions\/condition\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
-      { pattern: /href="[^"]*\/all-conditions\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
-      
-      // Drugs - Added multiple patterns
-      { pattern: /href="[^"]*\/all-drugs-a-z-pages\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      { pattern: /href="[^"]*\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      { pattern: /href="[^"]*\/all-drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      
-      // Yoga
-      { pattern: /href="[^"]*\/all-yoga-pages\/([^"]+)"/g, replacement: 'href="/yoga-exercise/$1"' },
-      { pattern: /href="[^"]*\/all-yoga\/([^"]+)"/g, replacement: 'href="/yoga-exercise/$1"' },
-      
-      // Articles
-      { pattern: /href="[^"]*\/all-article-pages\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
-      { pattern: /href="[^"]*\/all-articles\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
-      
-      // Localhost patterns for drugs
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-drugs-a-z-pages\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      
-      // Other localhost patterns
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-ayurvedic-pages\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-wellness-pages\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
-      { pattern: /href="http:\/\/localhost:[0-9]+\/all-conditions-a-z\/conditions\/condition\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
-    ];
-    
-    patternReplacements.forEach(({ pattern, replacement }) => {
-      const matches = updatedHtml.match(pattern);
-      if (matches) {
-        console.log(`🔄 Applying pattern: ${pattern} (${matches.length} matches)`);
-        updatedHtml = updatedHtml.replace(pattern, replacement);
-      }
-    });
-    
-    console.log("✅ Phase 4: Applied pattern-based transformations");
-
-    // PHASE 5: Clean up leftover Wagtail attributes
+    // Clean up leftover Wagtail attributes
     updatedHtml = updatedHtml.replace(/linktype="[^"]*"/g, '');
     updatedHtml = updatedHtml.replace(/\s?parent-id="\d+"/g, '');
     updatedHtml = updatedHtml.replace(/\s?id="\d+"/g, '');
     
-    // PHASE 6: Make external links open in new tab
+    // Make external links open in new tab
     updatedHtml = updatedHtml.replace(
       /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
       `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
     );
-    
-    // PHASE 7: Add click-friendly styles to all internal links
-    updatedHtml = updatedHtml.replace(
-      /<a([^>]*?)href="([^"]+)"([^>]*?)>/g,
-      (match, before, href, after) => {
-        // Skip external links (already handled)
-        if (href.startsWith('http')) return match;
-        
-        // Don't add to anchor links
-        if (href.startsWith('#')) return match;
-        
-        // Add enhanced styles for internal navigation links
-        const enhancedStyles = ' style="position: relative; z-index: 10; pointer-events: auto; cursor: pointer; text-decoration: underline;"';
-        
-        if (match.includes('style="')) {
-          return match.replace('style="', 'style="position: relative; z-index: 10; pointer-events: auto; cursor: pointer; text-decoration: underline; ');
-        }
-        
-        return `<a${before}href="${href}"${enhancedStyles}${after}>`;
-      }
-    );
 
-    console.log("✅ All phases completed successfully!");
-    
     return updatedHtml;
   } catch (error) {
     console.error("❌ Error in fixWagtailInternalLinks:", error);
@@ -564,16 +336,12 @@ const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
 };
 
 /* =========================================================
-   ENHANCED: Date Functions with better error handling
+   ✅ DATE FUNCTIONS
 ========================================================= */
 
-/**
- * Create fallback dates when CMS doesn't provide them
- */
 const createFallbackDates = () => {
   const now = new Date();
   
-  // Use setFullYear, setMonth, setDate for better date manipulation
   const publishedDate = new Date(now);
   publishedDate.setDate(now.getDate() - 60);
 
@@ -591,16 +359,13 @@ const createFallbackDates = () => {
   };
 };
 
-/**
- * Safe date parsing with multiple format attempts
- */
 const parseDateSafe = (dateString) => {
   if (!dateString || typeof dateString !== 'string') return null;
 
   const dateFormats = [
-    dateString, // Try as-is
-    dateString.replace(' ', 'T') + 'Z', // Try ISO format
-    dateString.split('T')[0], // Just date part
+    dateString,
+    dateString.replace(' ', 'T') + 'Z',
+    dateString.split('T')[0],
   ];
 
   for (const format of dateFormats) {
@@ -613,9 +378,6 @@ const parseDateSafe = (dateString) => {
   return null;
 };
 
-/**
- * Extract dates from drug with intelligent fallbacks
- */
 const extractDatesFromDrug = (drug) => {
   if (!drug) {
     const fallback = createFallbackDates();
@@ -644,7 +406,6 @@ const extractDatesFromDrug = (drug) => {
     ]
   };
 
-  // Find dates using field groups
   const findDateFromFields = (fields) => {
     for (const field of fields) {
       if (drug[field]) {
@@ -659,7 +420,6 @@ const extractDatesFromDrug = (drug) => {
   const updatedDate = findDateFromFields(dateFieldGroups.updated);
   const lastReviewedDate = findDateFromFields(dateFieldGroups.reviewed);
 
-  // If no dates at all, use fallback
   if (!publishedDate && !updatedDate && !lastReviewedDate) {
     const fallback = createFallbackDates();
     return {
@@ -670,7 +430,6 @@ const extractDatesFromDrug = (drug) => {
     };
   }
 
-  // Set intelligent defaults
   const finalPublishedDate = publishedDate || updatedDate || lastReviewedDate;
   const finalUpdatedDate = updatedDate || publishedDate || lastReviewedDate;
   const finalReviewedDate = lastReviewedDate || updatedDate || publishedDate;
@@ -683,9 +442,6 @@ const extractDatesFromDrug = (drug) => {
   };
 };
 
-/**
- * Format date for display with timezone consideration
- */
 const formatDateDisplay = (date, includeTime = false) => {
   if (!date) return "Date not available";
 
@@ -704,14 +460,10 @@ const formatDateDisplay = (date, includeTime = false) => {
 
     return date.toLocaleDateString('en-US', options);
   } catch (error) {
-    console.warn('Date formatting error:', error);
     return "Date error";
   }
 };
 
-/**
- * Get human-readable time ago string
- */
 const getTimeAgo = (date) => {
   if (!date) return "";
 
@@ -740,34 +492,27 @@ const getTimeAgo = (date) => {
 
     return `${seconds} seconds ago`;
   } catch (error) {
-    console.warn('Time ago calculation error:', error);
     return "";
   }
 };
 
-/**
- * Check if drug info was significantly updated
- */
 const isDrugUpdated = (publishedDate, updatedDate) => {
   if (!publishedDate || !updatedDate) return false;
 
   try {
-    // Check if dates are different (not just the same date)
     if (publishedDate.getTime() === updatedDate.getTime()) return false;
     
     const diffTime = Math.abs(updatedDate - publishedDate);
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
-    // Consider updated if > 7 days difference (more sensitive)
     return diffDays > 7;
   } catch (error) {
-    console.warn('Date comparison error:', error);
     return false;
   }
 };
 
 /* =========================================================
-   Enhanced DateDisplay Component with better accessibility
+   ✅ DateDisplay Component
 ========================================================= */
 
 const DateDisplay = ({
@@ -832,7 +577,6 @@ const DateDisplay = ({
 
   return (
     <div className={`space-y-4 ${className}`} role="region" aria-label="Drug information timeline">
-      {/* Main Date Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Published Date */}
         <div 
@@ -909,17 +653,6 @@ const DateDisplay = ({
               {getTimeAgo(updatedDate)}
             </span>
           </div>
-
-          {isUpdated && (
-            <div className="mt-3 text-center">
-              <span 
-                className="inline-block px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full"
-                aria-label="Recently updated content"
-              >
-                Recently Updated
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Reviewed Date */}
@@ -957,7 +690,6 @@ const DateDisplay = ({
         </div>
       </div>
 
-      {/* Fallback Notice */}
       {isFallback && (
         <div 
           className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl"
@@ -983,46 +715,17 @@ const DateDisplay = ({
           </div>
         </div>
       )}
-
-      {/* Important Disclaimer */}
-      <div 
-        className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl"
-        role="contentinfo"
-        aria-label="Medical disclaimer"
-      >
-        <div className="flex items-start gap-3">
-          <svg 
-            className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          <div>
-            <h5 className="font-medium text-blue-800 mb-1">Important Medical Disclaimer</h5>
-            <p className="text-sm text-blue-700">
-              This drug information is for educational purposes only. Always consult your healthcare
-              provider or pharmacist before starting, stopping, or changing any medication. Drug
-              information changes frequently, and this content may not reflect the most current updates.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
 
 /* =========================================================
-   Loading Skeleton Component
+   ✅ Loading Skeleton Component
 ========================================================= */
 const DrugPageSkeleton = () => (
   <div className="container mx-auto px-4 py-8 max-w-6xl animate-pulse">
-    {/* Breadcrumb skeleton */}
     <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
     
-    {/* Header skeleton */}
     <div className="mb-8">
       <div className="h-10 bg-gray-200 rounded w-3/4 mb-4"></div>
       <div className="flex flex-wrap gap-3 mb-6">
@@ -1032,7 +735,6 @@ const DrugPageSkeleton = () => (
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Main content skeleton */}
       <div className="lg:col-span-2 space-y-8">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="bg-white rounded-xl shadow-md p-6">
@@ -1046,7 +748,6 @@ const DrugPageSkeleton = () => (
         ))}
       </div>
 
-      {/* Sidebar skeleton */}
       <div className="space-y-8">
         <div className="bg-white rounded-xl shadow-md p-6">
           <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
@@ -1062,7 +763,7 @@ const DrugPageSkeleton = () => (
 );
 
 /* =========================================================
-   MAIN COMPONENT with improved performance
+   ✅ MAIN COMPONENT
 ========================================================= */
 
 export default function DrugPage({ drug: initialDrug, error: initialError }) {
@@ -1080,16 +781,13 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     warnings: ''
   });
 
-  // Get safe API URL for client-side fetches
   const safeApiUrl = useMemo(() => getSafeApiUrl(), []);
 
-  // Extract dates from drug - memoized for performance
   const { publishedDate, updatedDate, lastReviewedDate, isFallback } = useMemo(
     () => extractDatesFromDrug(drug),
     [drug]
   );
 
-  // Memoized drug name for better performance
   const drugName = useMemo(() => {
     if (!drug) return 'Drug Information';
     
@@ -1100,11 +798,10 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     return parts.length > 0 ? parts.join(' ') : drug.title || 'Unnamed Drug';
   }, [drug]);
 
-  // Memoized SEO data
   const seoData = useMemo(() => {
     const baseUrl = typeof window !== 'undefined' 
       ? window.location.origin 
-      : 'https://Niinfomed.com';
+      : 'https://niinfomed.com';
     
     const description = drug?.overview 
       ? drug.overview.replace(/<[^>]*>/g, '').substring(0, 155) + '...'
@@ -1138,7 +835,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     };
   }, [drug, drugName, slug, publishedDate, updatedDate]);
 
-  // Fetch drug if not preloaded
   useEffect(() => {
     if (!initialDrug && slug) {
       const loadDrug = async () => {
@@ -1171,7 +867,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     }
   }, [slug, initialDrug, safeApiUrl]);
 
-  // Apply content fixes with link transformation
   useEffect(() => {
     if (!drug) return;
 
@@ -1185,7 +880,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
           warnings: drug.warnings || ''
         };
 
-        // Process all sections in parallel with link transformation
         const fixedSections = await Promise.all(
           Object.entries(contentSections).map(async ([key, content]) => {
             const mediaFixed = fixMediaUrls(content);
@@ -1197,7 +891,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
         setFixedContent(Object.fromEntries(fixedSections));
       } catch (error) {
         console.error('Error fixing content:', error);
-        // Fallback to media-only fixed content
         const fallbackSections = {
           overview: fixMediaUrls(drug.overview || ''),
           uses: fixMediaUrls(drug.uses || ''),
@@ -1212,12 +905,10 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     fixContent();
   }, [drug, safeApiUrl]);
 
-  // Loading state
   if (loading) {
     return <DrugPageSkeleton />;
   }
 
-  // Error state
   if (error || !drug) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -1254,7 +945,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 
   return (
     <>
-      {/* SEO and Structured Data */}
       <NextSeo
         title={seoData.title}
         description={seoData.description}
@@ -1404,7 +1094,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
                           <Link
                             href={`/authors/${drug.author.slug || 'staff'}`}
                             className="font-semibold text-blue-700 hover:text-blue-900 hover:underline block"
-                            data-testid="link-drug-author"
                           >
                             {drug.author.name}
                           </Link>
@@ -1432,7 +1121,6 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
                           <Link
                             href={`/reviewers/${drug.reviewer.slug || 'staff'}`}
                             className="font-semibold text-blue-700 hover:text-blue-900 hover:underline block"
-                            data-testid="link-drug-reviewer"
                           >
                             {drug.reviewer.name}
                           </Link>
@@ -1581,21 +1269,19 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 }
 
 /* =========================================================
-   STATIC GENERATION with better error handling
+   ✅ STATIC GENERATION
 ========================================================= */
 
 export async function getStaticPaths() {
-  // ⚠️ For SSR/SSG use env directly (build time)
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-  
   try {
-    console.log("📡 Fetching static paths from:", `${apiUrl}/api/drugs/`);
+    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    
+    console.log("📡 Fetching drug paths from:", `${apiUrl}/api/drugs/`);
     const response = await fetch(`${apiUrl}/api/drugs/`, {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      next: { revalidate: 3600 }, // Revalidate API calls every hour
     });
 
     if (!response.ok) {
@@ -1606,14 +1292,13 @@ export async function getStaticPaths() {
     const data = await response.json();
     const drugs = Array.isArray(data) ? data : data.results || [];
 
-    // Filter out drugs without slugs
     const paths = drugs
       .filter(drug => drug?.slug && typeof drug.slug === 'string')
       .map((drug) => ({
         params: { slug: drug.slug },
       }));
 
-    console.log(`Generated ${paths.length} static paths for drugs`);
+    console.log(`✅ Generated ${paths.length} static paths for drugs`);
     return {
       paths,
       fallback: 'blocking',
@@ -1632,10 +1317,9 @@ export async function getStaticProps({ params }) {
     return { notFound: true };
   }
 
-  // ⚠️ For SSR/SSG use env directly (build time)
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-  
   try {
+    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    
     console.log(`📡 Fetching drug ${params.slug} from:`, `${apiUrl}/api/drugs/${params.slug}/`);
     const response = await fetch(`${apiUrl}/api/drugs/${params.slug}/`, {
       headers: {
@@ -1653,7 +1337,8 @@ export async function getStaticProps({ params }) {
         props: { 
           drug: null, 
           error: `Failed to load drug (${response.status})` 
-        } 
+        },
+        revalidate: 60
       };
     }
 
@@ -1668,7 +1353,7 @@ export async function getStaticProps({ params }) {
         drug,
         error: null,
       },
-      revalidate: 3600, // Revalidate every hour
+      revalidate: 3600,
     };
   } catch (error) {
     console.error(`Error fetching drug ${params.slug}:`, error);
@@ -1676,7 +1361,8 @@ export async function getStaticProps({ params }) {
       props: { 
         drug: null, 
         error: 'Network error loading drug information' 
-      } 
+      },
+      revalidate: 60
     };
   }
 }

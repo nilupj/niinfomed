@@ -1,6 +1,6 @@
 
 // Example usage of geo-location SEO features
-
+export const runtime = "edge";
 export const geoSeoExamples = {
   // Example 1: Medical clinic with location
   medicalClinic: {

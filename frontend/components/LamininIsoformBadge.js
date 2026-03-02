@@ -1,5 +1,5 @@
 import Link from 'next/link';
-
+export const runtime = "edge";
 export default function LamininIsoformBadge({ isoform, formatName, size = 'md' }) {
   if (!isoform) return null;
 

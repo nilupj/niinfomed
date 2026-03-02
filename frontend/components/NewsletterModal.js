@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRateLimit } from '../hooks/useRateLimit';
 import { sanitizeEmail } from '../utils/sanitize';
-
+export const runtime = "edge";
 export default function NewsletterModal({ isOpen, onClose }) {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);

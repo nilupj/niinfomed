@@ -1,5 +1,5 @@
 import Link from 'next/link';
-
+export const runtime = "edge";
 // Helper to get proxied image URL
 const getProxiedImageUrl = (url) => {
   if (!url) return null;

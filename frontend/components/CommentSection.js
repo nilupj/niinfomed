@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-
+export const runtime = "edge";
 export default function CommentSection({ contentType, contentSlug, pageTitle }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');

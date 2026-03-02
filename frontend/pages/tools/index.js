@@ -6,7 +6,6 @@ import CalorieCalculator from '../../components/calculators/CalorieCalculator';
 import WaterIntakeCalculator from '../../components/calculators/WaterIntakeCalculator';
 import StressAssessment from '../../components/calculators/StressAssessment';
 import SleepCalculator from '../../components/calculators/SleepCalculator';
-
 export default function Tools() {
   const [activeTool, setActiveTool] = useState('bmi');
 

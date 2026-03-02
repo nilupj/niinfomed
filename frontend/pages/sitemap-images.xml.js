@@ -1,3 +1,4 @@
+
 export async function getServerSideProps({ res }) {
   const baseUrl = "https://Niinfomed.com";
 

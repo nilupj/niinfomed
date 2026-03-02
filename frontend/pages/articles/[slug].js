@@ -10,33 +10,44 @@ import { fetchArticle, fetchArticlePaths, fetchRelatedArticles } from '../../uti
 import ContentNav from '../../components/ContentNav';
 
 /* =========================================================
-   ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
+   ✅ UPDATED: Use environment variable for CMS URL
+   No more hardcoded localhost/0.0.0.0/127.0.0.1
 ========================================================= */
 const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+  // Use environment variable with fallback to your Oracle CMS
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
+  // For client-side, we might need to replace the hostname
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
-
-    base = base
-      .replace("0.0.0.0", frontendHost)
-      .replace("127.0.0.1", frontendHost)
-      .replace("localhost", frontendHost);
+    
+    // Only replace if the base contains localhost/127.0.0.1
+    // This ensures we don't break the Oracle URL
+    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
+      base = base
+        .replace("0.0.0.0", frontendHost)
+        .replace("127.0.0.1", frontendHost)
+        .replace("localhost", frontendHost);
+    }
   }
 
   return base;
 };
 
 // ⚠️ For SSR/SSG use env directly (build time)
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
    ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const fixMediaUrls = (html) => {
   if (!html) return "";
 
   return html
+    // Replace any CMS URL patterns with /cms-media/
+    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
+    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
     .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
@@ -47,6 +58,8 @@ const fixMediaUrls = (html) => {
     .replace(/src='\/media\//g, "src='/cms-media/")
     .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
@@ -58,10 +71,19 @@ const fixMediaUrls = (html) => {
 
 /* =========================================================
    ✅ Helper: Single image URL fix
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
 
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url
+      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
+      .replace('/cms-media/media/', '/cms-media/');
+  }
+
+  // Handle localhost/0.0.0.0 patterns
   if (url.startsWith("http://0.0.0.0:8001")) {
     return url
       .replace("http://0.0.0.0:8001", "/cms-media")
@@ -168,6 +190,7 @@ const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
 
 /* =========================================================
    ✅ COMPREHENSIVE WAGTAIL URL FIXER
+   Updated to handle Oracle CMS URLs
 ========================================================= */
 
 /**
@@ -197,8 +220,7 @@ const extractAllHrefUrls = (html = "") => {
 
 /**
  * TRANSFORM WAGTAIL URL TO NEXT.JS ROUTE - ULTIMATE VERSION
- * Handles: http://localhost:5000/all-homeopathic-pages/9-worst-habits-for-muscles
- * Result: /homeopathy/9-worst-habits-for-muscles
+ * Handles URLs from Oracle CMS
  */
 const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   if (!wagtailUrl || wagtailUrl === "#") return "#";
@@ -208,8 +230,13 @@ const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   // Remove domain and protocol to get just the path
   let path = wagtailUrl;
   
-  // Remove http://localhost:5000/ or similar domains
+  // Remove http://161.118.167.107/ or similar domains
   path = path.replace(/https?:\/\/[^\/]+\//, '/');
+  
+  // Remove localhost patterns
+  path = path.replace(/https?:\/\/localhost:5000\//, '/');
+  path = path.replace(/https?:\/\/127.0.0.1:5000\//, '/');
+  path = path.replace(/https?:\/\/0.0.0.0:5000\//, '/');
   
   // Ensure it starts with /
   if (!path.startsWith('/')) {
@@ -220,102 +247,51 @@ const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   
   // SPECIAL CASE MAPPING - Direct transformations for known patterns
   const directMappings = {
-    // Your specific examples
-    '/all-homeopathic-pages/9-worst-habits-for-muscles': '/homeopathy/9-worst-habits-for-muscles',
-    '/all-news/what-drinking-kefir-really-does-to-your-gut-and-oral-microbiome': '/news/what-drinking-kefir-really-does-to-your-gut-and-oral-microbiome',
-    '/all-ayurvedic-pages/ten-drinks-that-fight-pain-and-inflammation': '/ayurveda/ten-drinks-that-fight-pain-and-inflammation',
-    '/all-wellness-pages/whats-normal-aging': '/wellness/whats-normal-aging',
-    '/all-conditions-a-z/conditions/condition/type-1-diabetes': '/conditions/type-1-diabetes',
-    '/all-drugs-a-z-pages/all-drugs-pages/drugs/pancreaze-pancrelipase-uses-side-effects-and-more': '/drugs/pancreaze-pancrelipase-uses-side-effects-and-more',
-    
-    // General patterns
+    // Homeopathy patterns
     '/all-homeopathic-pages/': '/homeopathy/',
     '/all-homeopathy/': '/homeopathy/',
+    
+    // Ayurveda patterns
     '/all-ayurvedic-pages/': '/ayurveda/',
     '/all-ayurveda/': '/ayurveda/',
+    
+    // News patterns
     '/all-news-pages/': '/news/',
     '/all-news/': '/news/',
+    
+    // Wellness patterns
     '/all-wellness-pages/': '/wellness/',
     '/all-wellness/': '/wellness/',
+    
+    // Conditions patterns
     '/all-conditions-a-z/conditions/condition/': '/conditions/',
     '/all-conditions-a-z/': '/conditions/',
     '/all-conditions/': '/conditions/',
+    
+    // Drugs patterns
     '/all-drugs-a-z-pages/all-drugs-pages/drugs/': '/drugs/',
     '/all-drugs-pages/drugs/': '/drugs/',
     '/all-drugs-a-z-pages/': '/drugs/',
     '/all-drugs/': '/drugs/',
+    
+    // Yoga patterns
     '/all-yoga-pages/': '/yoga-exercise/',
     '/all-yoga/': '/yoga-exercise/',
+    
+    // Articles patterns
     '/all-article-pages/': '/articles/',
     '/all-articles/': '/articles/',
   };
-  
-  // Check for exact matches first
-  for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
-    if (path === wagtailPattern) {
-      console.log(`✅ Exact match: ${path} → ${nextRoute}`);
-      return nextRoute;
-    }
-  }
   
   // Check for pattern matches
   for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
     if (path.startsWith(wagtailPattern)) {
       // Extract the slug part after the pattern
       const slug = path.replace(wagtailPattern, '');
-      if (slug) {
-        const finalRoute = nextRoute.endsWith('/') 
-          ? `${nextRoute}${slug}`
-          : `${nextRoute}/${slug}`;
+      if (slug && !slug.includes('/')) {
+        const finalRoute = `${nextRoute}${slug}`;
         console.log(`✅ Pattern match: ${path} → ${finalRoute}`);
         return finalRoute;
-      }
-    }
-  }
-  
-  // DYNAMIC TRANSFORMATION - Handle any "all-*" pattern
-  if (path.includes('/all-')) {
-    const parts = path.split('/').filter(p => p);
-    
-    // Find the "all-*" part
-    const allIndex = parts.findIndex(p => p.startsWith('all-'));
-    
-    if (allIndex !== -1) {
-      const allPart = parts[allIndex];
-      
-      // Map "all-*" to category
-      const categoryMap = {
-        'all-homeopathic-pages': 'homeopathy',
-        'all-homeopathy': 'homeopathy',
-        'all-ayurvedic-pages': 'ayurveda',
-        'all-ayurveda': 'ayurveda',
-        'all-news-pages': 'news',
-        'all-news': 'news',
-        'all-wellness-pages': 'wellness',
-        'all-wellness': 'wellness',
-        'all-conditions-a-z': 'conditions',
-        'all-conditions': 'conditions',
-        'all-drugs-a-z-pages': 'drugs',
-        'all-drugs-pages': 'drugs',
-        'all-drugs': 'drugs',
-        'all-yoga-pages': 'yoga-exercise',
-        'all-yoga': 'yoga-exercise',
-        'all-article-pages': 'articles',
-        'all-articles': 'articles'
-      };
-      
-      const category = categoryMap[allPart];
-      
-      if (category) {
-        // Get the last part as slug
-        const slug = parts[parts.length - 1];
-        
-        // Skip if slug is the same as category or empty
-        if (slug && slug !== category && !slug.startsWith('all-')) {
-          const finalRoute = `/${category}/${slug}`;
-          console.log(`✅ Dynamic transformation: ${path} → ${finalRoute}`);
-          return finalRoute;
-        }
       }
     }
   }
@@ -425,7 +401,6 @@ const buildFrontendUrlFromWagtailPage = (pageData) => {
 
 /**
  * ULTIMATE FIX FOR WAGTAIL INTERNAL LINKS
- * This handles both linktype="page" links AND raw href URLs
  */
 const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
   if (!html) return html;
@@ -488,7 +463,8 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
       href.includes('all-') || 
       href.includes('localhost') || 
       href.includes('127.0.0.1') ||
-      href.includes('0.0.0.0')
+      href.includes('0.0.0.0') ||
+      href.includes('161.118.167.107')
     );
     
     if (wagtailHrefs.length > 0) {
@@ -549,6 +525,14 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
       { pattern: /href="[^"]*\/all-article-pages\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
       { pattern: /href="[^"]*\/all-articles\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
       
+      // Oracle CMS patterns
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-ayurvedic-pages\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-wellness-pages\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-conditions-a-z\/conditions\/condition\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
+      { pattern: /href="http:\/\/161\.118\.167\.107\/all-drugs-a-z-pages\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
+      
       // Localhost patterns
       { pattern: /href="http:\/\/localhost:5000\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
       { pattern: /href="http:\/\/localhost:5000\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
@@ -601,7 +585,6 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
     );
 
     console.log("✅ All phases completed successfully!");
-    console.log("📊 Final HTML sample:", updatedHtml.substring(0, 500));
     
     return updatedHtml;
   } catch (error) {
@@ -894,7 +877,7 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                     alt={title}
                     fill
                     className="object-cover"
-                    unoptimized={mainImageUrl?.includes("127.0.0.1") || mainImageUrl?.includes("localhost")}
+                    unoptimized={mainImageUrl?.includes("127.0.0.1") || mainImageUrl?.includes("localhost") || mainImageUrl?.includes("161.118.167.107")}
                   />
                 </div>
               )}
@@ -1178,6 +1161,7 @@ export async function getStaticPaths() {
 
 export async function getStaticProps({ params, locale }) {
   try {
+    console.log(`📡 Fetching article: ${params.slug} from Oracle CMS`);
     const article = await fetchArticle(params.slug, locale);
 
     if (!article) {

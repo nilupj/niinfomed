@@ -1,14 +1,27 @@
 import axios from 'axios';
 
-// API URL configuration - use server URL for SSR, proxy for client
-const API_URL = typeof window === 'undefined' 
-  ? (process.env.NEXT_PUBLIC_CMS_API_URL || 'http://0.0.0.0:8001')
-  : '';
+// API URL configuration - use environment variable with fallback to Oracle CMS
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
 const DEFAULT_LANG = 'en';
+
+// Helper to get base URL without double protocol
+const getBaseUrl = () => {
+  if (typeof window === 'undefined') {
+    let url = CMS_API_URL;
+    url = url.replace(/\/$/, '');
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return `http://${url}`;
+  }
+  return '';
+};
+
+const baseUrl = getBaseUrl();
 
 // API configuration for Wagtail CMS
 const api = axios.create({
-  baseURL: typeof window === 'undefined' ? 'http://0.0.0.0:8001/api' : '/cms-api',
+  baseURL: typeof window === 'undefined' ? `${baseUrl}/api` : '/cms-api',
   timeout: 30000,
   paramsSerializer: {
     encode: (param) => encodeURIComponent(param)
@@ -22,20 +35,27 @@ const api = axios.create({
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    console.log(`📤 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
+    console.error('❌ API Request Error:', error);
     return Promise.reject(error);
   }
 );
 
 // Add response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`📥 API Response: ${response.status} ${response.config.url}`);
+    return response;
+  },
   (error) => {
-    console.error('API Response Error:', error.response?.status, error.config?.url);
+    if (error.response) {
+      console.error('❌ API Response Error:', error.response.status, error.config?.url);
+    } else if (error.request) {
+      console.error('❌ API No Response:', error.config?.url);
+    }
     return Promise.reject(error);
   }
 );
@@ -44,9 +64,15 @@ api.interceptors.response.use(
 export const getImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
-  // Convert CMS URLs to relative paths (handles mixed content issues)
-  // The /cms-media/ path is proxied through Next.js to the CMS
-  if (imageUrl.includes('0.0.0.0:8001/media/') || imageUrl.includes('localhost:8001/media/')) {
+  // Handle Oracle CMS URL
+  if (imageUrl.includes('161.118.167.107')) {
+    return imageUrl.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  }
+
+  // Handle localhost patterns
+  if (imageUrl.includes('0.0.0.0:8001/media/') || 
+      imageUrl.includes('127.0.0.1:8001/media/') || 
+      imageUrl.includes('localhost:8001/media/')) {
     return imageUrl.replace(/https?:\/\/[^/]+\/media\//, '/cms-media/');
   }
 
@@ -55,29 +81,46 @@ export const getImageUrl = (imageUrl) => {
     return imageUrl;
   }
 
-  // For HTTP URLs from other sources, keep as is (may have mixed content issues)
+  // For HTTP URLs from other sources, keep as is
   if (imageUrl.startsWith('http://')) {
     return imageUrl;
   }
 
   // For relative URLs starting with /media/, proxy through cms-media
   if (imageUrl.startsWith('/media/')) {
-    return `/cms-media${imageUrl.slice(6)}`;
+    return `/cms-media${imageUrl.replace('/media/', '/')}`;
   }
 
-  // Otherwise, construct full URL
-  return `/cms-media/${imageUrl}`;
+  // If already using cms-media, clean up any double paths
+  if (imageUrl.startsWith('/cms-media/')) {
+    return imageUrl.replace('/cms-media/media/', '/cms-media/');
+  }
+
+  return imageUrl;
+};
+
+// Helper to fetch with multiple endpoint attempts
+const tryEndpoints = async (endpoints, params = {}) => {
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`🔄 Trying endpoint: ${endpoint}`);
+      const response = await api.get(endpoint, { params });
+      if (response.data) {
+        console.log(`✅ Success: ${endpoint}`);
+        return response;
+      }
+    } catch (error) {
+      console.log(`❌ Failed: ${endpoint}`);
+      // Continue to next endpoint
+    }
+  }
+  throw new Error('All endpoints failed');
 };
 
 /* =========================================================
-   ✅ LAMININ API FUNCTIONS - NEW
-   Complete integration with Wagtail Laminin models
+   ✅ LAMININ API FUNCTIONS
 ========================================================= */
 
-/**
- * Fetch laminin citations with optional filtering
- * Supports bilingual content via lang parameter
- */
 export const fetchLamininCitations = async (params = {}) => {
   try {
     const { lang = DEFAULT_LANG, limit = 20, offset = 0, article_id, isoform_id } = params;
@@ -92,7 +135,6 @@ export const fetchLamininCitations = async (params = {}) => {
 
     const response = await api.get('/laminincitations/', { params: queryParams });
     
-    // Handle Wagtail API v2 pagination format
     const data = response.data;
     const items = data.items || data.results || data || [];
     
@@ -108,10 +150,6 @@ export const fetchLamininCitations = async (params = {}) => {
   }
 };
 
-/**
- * Fetch a single laminin citation by slug or ID
- * Bilingual: pass lang='hi' for Hindi content
- */
 export const fetchLamininCitationBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
     const response = await api.get(`/laminincitations/${slug}/`, {
@@ -124,10 +162,6 @@ export const fetchLamininCitationBySlug = async (slug, lang = DEFAULT_LANG) => {
   }
 };
 
-/**
- * Fetch laminin citations for a specific article
- * Used in ArticleDetail page to display related laminin content
- */
 export const fetchLamininCitationsForArticle = async (articleId, lang = DEFAULT_LANG) => {
   if (!articleId) return [];
   
@@ -140,7 +174,6 @@ export const fetchLamininCitationsForArticle = async (articleId, lang = DEFAULT_
       }
     });
     
-    // Handle both array and {items: []} response formats
     const data = response.data;
     return data.items || data.results || data || [];
   } catch (error) {
@@ -149,9 +182,6 @@ export const fetchLamininCitationsForArticle = async (articleId, lang = DEFAULT_
   }
 };
 
-/**
- * Fetch laminin isoforms with optional filtering
- */
 export const fetchLamininIsoforms = async (params = {}) => {
   try {
     const { lang = DEFAULT_LANG, limit = 50, citation_id } = params;
@@ -172,9 +202,6 @@ export const fetchLamininIsoforms = async (params = {}) => {
   }
 };
 
-/**
- * Fetch a single laminin isoform by ID or slug
- */
 export const fetchLamininIsoform = async (id, lang = DEFAULT_LANG) => {
   if (!id) return null;
   
@@ -189,9 +216,6 @@ export const fetchLamininIsoform = async (id, lang = DEFAULT_LANG) => {
   }
 };
 
-/**
- * Fetch all laminin citation paths for static generation
- */
 export const fetchLamininCitationPaths = async () => {
   try {
     const response = await api.get('/laminincitations/', {
@@ -211,9 +235,6 @@ export const fetchLamininCitationPaths = async () => {
   }
 };
 
-/**
- * Fetch featured laminin citation for homepage/index pages
- */
 export const fetchFeaturedLamininCitation = async (lang = DEFAULT_LANG) => {
   try {
     const response = await api.get('/laminincitations/', {
@@ -233,18 +254,13 @@ export const fetchFeaturedLamininCitation = async (lang = DEFAULT_LANG) => {
   }
 };
 
-/**
- * Fetch laminin family overview / aggregated data
- */
 export const fetchLamininFamily = async (lang = DEFAULT_LANG) => {
   try {
-    // Fetch all isoforms and key citations in parallel
     const [isoforms, keyCitations] = await Promise.all([
       fetchLamininIsoforms({ lang, limit: 50 }),
       fetchLamininCitations({ lang, limit: 5 })
     ]);
 
-    // Group isoforms by function/type
     const grouped = {
       embryogenesis: isoforms.filter(i => 
         i.function?.toLowerCase().includes('embryo') || 
@@ -276,14 +292,13 @@ export const fetchLamininFamily = async (lang = DEFAULT_LANG) => {
 };
 
 /* =========================================================
-   ✅ EXISTING API FUNCTIONS (preserved)
+   ✅ ARTICLES API
 ========================================================= */
 
-// Articles
 export const fetchTopStories = async (limit = 10) => {
   try {
     const response = await api.get('/articles/top-stories', {
-      params: { lang: DEFAULT_LANG }
+      params: { lang: DEFAULT_LANG, limit }
     });
     return response.data;
   } catch (error) {
@@ -338,7 +353,10 @@ export const fetchHealthTopics = async () => {
   }
 };
 
-// News
+/* =========================================================
+   ✅ NEWS API
+========================================================= */
+
 export const fetchLatestNews = async (limit = 10) => {
   try {
     const response = await api.get('/news/latest', {
@@ -351,9 +369,11 @@ export const fetchLatestNews = async (limit = 10) => {
   }
 };
 
-export const fetchNewsBySlug = async (slug) => {
+export const fetchNewsBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/news/${slug}`);
+    const response = await api.get(`/news/${slug}`, {
+      params: { lang }
+    });
     return response.data;
   } catch (error) {
     console.error(`Error fetching news ${slug}:`, error);
@@ -373,7 +393,34 @@ export const fetchRelatedNews = async (slug, limit = 3) => {
   }
 };
 
-// Wellness
+export const fetchNewsPaths = async () => {
+  try {
+    const response = await api.get('/news/paths');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching news paths:', error);
+    return [];
+  }
+};
+
+// ✅ NEW: Fetch all news for conditions page
+export const fetchNews = async (params = {}) => {
+  try {
+    const { limit = 10, lang = DEFAULT_LANG } = params;
+    const response = await api.get('/news/latest', {
+      params: { limit, lang }
+    });
+    return response.data || [];
+  } catch (error) {
+    console.error('Error fetching news:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ WELLNESS API
+========================================================= */
+
 export const fetchWellnessTopics = async (limit = 50) => {
   try {
     const response = await api.get('/wellness/topics', {
@@ -402,23 +449,72 @@ export const fetchWellBeingArticles = async () => {
   }
 };
 
-// Conditions
+export const fetchWellnessPaths = async () => {
+  try {
+    const topics = await fetchWellnessTopics(100);
+    return topics.map(t => t.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching wellness paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ CONDITIONS API - FIXED WITH MULTIPLE ENDPOINTS
+========================================================= */
+
 export const fetchLatestConditions = async (limit = 20) => {
   try {
-    const response = await api.get('/conditions/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
-    return response.data;
+    const endpoints = [
+      '/conditions/latest/',
+      '/conditions/',
+      '/conditions/latest'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
+    
+    // Handle different response formats
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    } else if (response.data.items) {
+      return response.data.items;
+    }
+    return response.data || [];
   } catch (error) {
-    console.error('Error fetching conditions:', error);
+    console.error('Error fetching latest conditions:', error);
     return [];
   }
 };
 
 export const fetchConditionsIndex = async () => {
   try {
-    const response = await api.get('/conditions');
-    return response.data;
+    console.log('🔍 Fetching conditions index from Oracle CMS');
+    
+    const endpoints = [
+      '/conditions/',
+      '/conditions',
+      '/conditions/index/',
+      '/conditions/latest/',
+      '/v2/pages/?type=conditions.ConditionPage&fields=title,slug,id'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit: 100, lang: DEFAULT_LANG });
+    
+    // Handle different response formats
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    } else if (response.data.items) {
+      return response.data.items;
+    } else if (response.data.conditions) {
+      return response.data.conditions;
+    } else if (response.data.id || response.data.slug) {
+      return [response.data];
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching conditions index:', error);
     return [];
@@ -427,9 +523,32 @@ export const fetchConditionsIndex = async () => {
 
 export const fetchConditionBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/conditions/${slug}`, {
-      params: { lang }
-    });
+    console.log(`🔍 Fetching condition: ${slug}`);
+    
+    const endpoints = [
+      `/conditions/${slug}/`,
+      `/conditions/${slug}`,
+      `/conditions/detail/${slug}/`,
+      `/v2/pages/?slug=${slug}&type=conditions.ConditionPage`,
+    ];
+    
+    // If slug contains an ID at the end (format: name-123)
+    const parts = String(slug).split('-');
+    const lastPart = parts[parts.length - 1];
+    if (/^\d+$/.test(lastPart)) {
+      endpoints.unshift(`/conditions/by_id/${lastPart}/`);
+      endpoints.unshift(`/v2/pages/${lastPart}/`);
+    }
+    
+    const response = await tryEndpoints(endpoints, { lang });
+    
+    // Handle different response formats
+    if (response.data.items && response.data.items.length > 0) {
+      return response.data.items[0];
+    }
+    if (response.data.results && response.data.results.length > 0) {
+      return response.data.results[0];
+    }
     return response.data;
   } catch (error) {
     console.error(`Error fetching condition ${slug}:`, error);
@@ -441,15 +560,74 @@ export const fetchCondition = fetchConditionBySlug;
 
 export const fetchConditionPaths = async () => {
   try {
-    const response = await api.get('/conditions/paths');
-    return response.data;
+    console.log('🔍 Fetching condition paths');
+    
+    const endpoints = [
+      '/conditions/paths',
+      '/conditions/paths/',
+      '/conditions/',
+      '/v2/pages/?type=conditions.ConditionPage&fields=slug,title,id',
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await api.get(endpoint, { params: { limit: 100 } });
+        
+        if (response.data) {
+          // Handle different response formats
+          if (Array.isArray(response.data)) {
+            // If it's an array of strings (slugs)
+            if (response.data.every(item => typeof item === 'string')) {
+              return response.data;
+            }
+            // If it's an array of objects with slugs
+            return response.data.map(item => {
+              if (item.slug) return item.slug;
+              if (item.title) {
+                const slug = item.title.toLowerCase()
+                  .replace(/[^\w\s-]/g, '')
+                  .replace(/\s+/g, '-');
+                return item.id ? `${slug}-${item.id}` : slug;
+              }
+              return null;
+            }).filter(Boolean);
+          } else if (response.data.results) {
+            return response.data.results.map(item => item.slug).filter(Boolean);
+          } else if (response.data.items) {
+            return response.data.items.map(item => item.slug).filter(Boolean);
+          } else if (response.data.paths) {
+            return response.data.paths;
+          }
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+    
+    // Fallback: fetch all conditions and generate slugs
+    const conditions = await fetchConditionsIndex();
+    return conditions.map(c => {
+      const title = c.title || c.name;
+      const id = c.id;
+      if (title && id) {
+        const slug = title.toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '-');
+        return `${slug}-${id}`;
+      }
+      return c.slug;
+    }).filter(Boolean);
+    
   } catch (error) {
     console.error('Error fetching condition paths:', error);
     return [];
   }
 };
 
-// Drugs
+/* =========================================================
+   ✅ DRUGS API
+========================================================= */
+
 export const fetchDrugBySlug = async (slug) => {
   try {
     const response = await api.get(`/drugs/${slug}`);
@@ -464,99 +642,302 @@ export const fetchDrugDetails = fetchDrugBySlug;
 
 export const getDrugs = async () => {
   try {
-    const response = await fetch(`${API_URL}/api/drugs/?lang=${DEFAULT_LANG}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch drugs');
+    const endpoints = [
+      '/drugs/',
+      '/drugs',
+      '/drugs/index/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang: DEFAULT_LANG, limit: 100 });
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    } else if (response.data.items) {
+      return response.data.items;
     }
-    const data = await response.json();
-    return Array.isArray(data) ? data : (data.results || []);
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching drugs:', error);
-    throw error;
-  }
-};
-
-export const fetchDrugsIndex = async () => {
-  try {
-    const response = await fetch(`${API_URL}/api/drugs/?lang=${DEFAULT_LANG}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch drugs index');
-    }
-    const data = await response.json();
-    return Array.isArray(data) ? data : (data.results || []);
-  } catch (error) {
-    console.error('Error fetching drugs index:', error);
     return [];
   }
 };
 
-// Homeopathy
+export const fetchDrugsIndex = async () => {
+  return getDrugs();
+};
+
+export const fetchDrugPaths = async () => {
+  try {
+    const drugs = await getDrugs();
+    return drugs.map(d => d.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching drug paths:', error);
+    return [];
+  }
+};
+
+// ✅ NEW: Fetch drugs for conditions page
+export const fetchDrugs = async (params = {}) => {
+  try {
+    const { limit = 50, lang = DEFAULT_LANG } = params;
+    return await getDrugs();
+  } catch (error) {
+    console.error('Error fetching drugs:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ HOMEOPATHY API
+========================================================= */
+
 export const fetchHomeopathyTopics = async (limit = 20) => {
   try {
     const response = await api.get('/homeopathy/topics/', {
       params: { limit, lang: DEFAULT_LANG }
     });
-    return response.data;
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching homeopathy topics:', error);
     return [];
   }
 };
 
-// Ayurveda
+export const fetchHomeopathyPaths = async () => {
+  try {
+    const topics = await fetchHomeopathyTopics(100);
+    return topics.map(t => t.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching homeopathy paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ AYURVEDA API
+========================================================= */
+
 export const fetchAyurvedaTopics = async (limit = 20) => {
   try {
     const response = await api.get('/ayurveda/topics/', {
       params: { limit, lang: DEFAULT_LANG }
     });
-    return response.data;
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching ayurveda topics:', error);
     return [];
   }
 };
 
-// Yoga
+export const fetchAyurvedaPaths = async () => {
+  try {
+    const topics = await fetchAyurvedaTopics(100);
+    return topics.map(t => t.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching ayurveda paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ YOGA API
+========================================================= */
+
 export const fetchYogaTopics = async (limit = 20) => {
   try {
     const response = await api.get('/yoga/topics/', {
       params: { limit, lang: DEFAULT_LANG }
     });
-    return response.data;
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching yoga topics:', error);
     return [];
   }
 };
 
-// Videos
+export const fetchYogaPaths = async () => {
+  try {
+    const topics = await fetchYogaTopics(100);
+    return topics.map(t => t.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching yoga paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ VIDEOS API
+========================================================= */
+
 export const fetchVideos = async (limit = 20) => {
   try {
-    const response = await api.get('/videos/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
-    console.log('API RESPONSE:', response.data);
-    return response.data.results || [];
+    const endpoints = [
+      '/videos/',
+      '/videos',
+      '/videos/latest/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    } else if (response.data.items) {
+      return response.data.items;
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching videos:', error);
     return [];
   }
 };
 
-// Social Posts
+export const fetchVideoPaths = async () => {
+  try {
+    const videos = await fetchVideos(100);
+    return videos.map(v => v.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching video paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ SOCIAL POSTS API
+========================================================= */
+
 export const fetchSocialPosts = async (limit = 20) => {
   try {
     const response = await api.get('/social/posts/', {
       params: { limit, lang: DEFAULT_LANG }
     });
-    return response.data;
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
   } catch (error) {
     console.error('Error fetching social posts:', error);
     return [];
   }
 };
 
-// Search - Enhanced with Laminin support
+/* =========================================================
+   ✅ REMEDIES API - NEW
+========================================================= */
+
+export const fetchRemedyArticles = async (params = {}) => {
+  try {
+    const { lang = DEFAULT_LANG, limit = 20 } = params;
+    const response = await api.get('/remedies/', { 
+      params: { lang, limit } 
+    });
+    
+    // Handle different response formats
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    } else if (response.data.items) {
+      return response.data.items;
+    }
+    return response.data || [];
+  } catch (error) {
+    console.error('Error fetching remedy articles:', error);
+    return [];
+  }
+};
+
+export const fetchRemedyBySlug = async (slug, lang = DEFAULT_LANG) => {
+  try {
+    const response = await api.get(`/remedies/${slug}/`, {
+      params: { lang }
+    });
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching remedy ${slug}:`, error);
+    throw error;
+  }
+};
+
+export const fetchRemedyPaths = async () => {
+  try {
+    const remedies = await fetchRemedyArticles({ limit: 100 });
+    return remedies.map(r => r.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching remedy paths:', error);
+    return [];
+  }
+};
+
+/* =========================================================
+   ✅ REVIEWERS API - NEW
+========================================================= */
+
+export const fetchReviewers = async () => {
+  try {
+    const response = await api.get('/reviewers/');
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
+  } catch (error) {
+    console.error('Error fetching reviewers:', error);
+    return [];
+  }
+};
+
+export const fetchReviewerPaths = async () => {
+  try {
+    const reviewers = await fetchReviewers();
+    return reviewers.map(r => r.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching reviewer paths:', error);
+    return [];
+  }
+};
+
+export const fetchReviewerBySlug = async (slug) => {
+  try {
+    const cleanSlug = slug.replace(/^\/+|\/+$/g, '');
+    const response = await api.get(`/reviewers/${cleanSlug}/`);
+    return response.data;
+  } catch (error) {
+    console.error('Reviewer fetch error:', error);
+    throw error;
+  }
+};
+
+/* =========================================================
+   ✅ SEARCH API
+========================================================= */
+
 export const searchContent = async (query, filters = {}) => {
   try {
     const response = await api.get('/search', {
@@ -564,7 +945,7 @@ export const searchContent = async (query, filters = {}) => {
         q: query,
         type: filters.type || '',
         lang: DEFAULT_LANG,
-        include_laminin: true // Include laminin citations in search
+        include_laminin: true
       }
     });
 
@@ -580,8 +961,6 @@ export const searchContent = async (query, filters = {}) => {
       homeopathy: data.homeopathy || [],
       yoga: data.yoga || [],
       videos: data.videos || [],
-      
-      // ✅ NEW: Laminin search results
       lamininCitations: data.laminin_citations || data.lamininCitations || [],
       lamininIsoforms: data.laminin_isoforms || data.lamininIsoforms || []
     };
@@ -603,6 +982,10 @@ export const searchContent = async (query, filters = {}) => {
   }
 };
 
+/* =========================================================
+   ✅ AUTHORS API
+========================================================= */
+
 export const getAuthorDetail = async (slug) => {
   try {
     const cleanSlug = slug.replace(/^\/+|\/+$/g, '');
@@ -611,6 +994,32 @@ export const getAuthorDetail = async (slug) => {
   } catch (error) {
     console.error('Author fetch error:', error);
     throw error;
+  }
+};
+
+export const fetchAuthors = async () => {
+  try {
+    const response = await api.get('/authors/');
+    
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.results) {
+      return response.data.results;
+    }
+    return response.data || [];
+  } catch (error) {
+    console.error('Error fetching authors:', error);
+    return [];
+  }
+};
+
+export const fetchAuthorPaths = async () => {
+  try {
+    const authors = await fetchAuthors();
+    return authors.map(a => a.slug).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching author paths:', error);
+    return [];
   }
 };
 

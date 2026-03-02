@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function LamininCitationCard({ citation, formatIsoformName }) {
   const [expanded, setExpanded] = useState(false);
 

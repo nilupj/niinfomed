@@ -1,3 +1,4 @@
+export const runtime = "edge";
 const conditions = {
   'diabetes': {
     id: 1,

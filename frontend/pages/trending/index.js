@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { NextSeo } from 'next-seo';
 import Layout from '../../components/Layout';
-
 export default function TrendingIndex() {
   const [trendingItems, setTrendingItems] = useState([]);
   const [loading, setLoading] = useState(true);

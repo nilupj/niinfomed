@@ -2,7 +2,6 @@ import { useRouter } from 'next/router';
 import HeartHealthQuiz from '../../components/quizzes/HeartHealthQuiz';
 import MentalHealthQuiz from '../../components/quizzes/MentalHealthQuiz';
 import NutritionQuiz from '../../components/quizzes/NutritionQuiz';
-
 export default function QuizPage() {
   const router = useRouter();
   const { slug } = router.query;

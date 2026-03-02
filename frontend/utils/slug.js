@@ -3,6 +3,7 @@
 /**
  * Generate a URL-friendly slug from a string
  */
+export const runtime = "edge";
 export function generateSlug(text) {
   if (!text) return '';
   

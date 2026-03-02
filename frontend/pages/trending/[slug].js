@@ -1,14 +1,54 @@
-
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { NextSeo } from 'next-seo';
+import Image from 'next/image';
+
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
+// Helper to get proxied image URL
+const getProxiedImageUrl = (url) => {
+  if (!url) return null;
+
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  }
+  
+  // Handle localhost patterns
+  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
+    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
+  }
+  
+  if (url.startsWith('/media/')) {
+    return `/cms-media${url.replace('/media/', '/')}`;
+  }
+  
+  return url;
+};
+
+// Helper to format date
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch {
+    return '';
+  }
+};
 
 export default function TrendingDetail() {
   const router = useRouter();
   const { slug } = router.query;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [trendingData, setTrendingData] = useState(null);
   const [activeTab, setActiveTab] = useState('articles');
   const [tabContent, setTabContent] = useState({
     articles: [],
@@ -19,13 +59,16 @@ export default function TrendingDetail() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const itemsPerSlide = 3;
 
+  // Fetch trending data on mount
   useEffect(() => {
     if (!slug) return;
 
-    const checkTrendingExists = async () => {
+    const fetchTrendingData = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://0.0.0.0:8001';
-        const response = await fetch(`${apiUrl}/api/trending/${slug}/`);
+        setLoading(true);
+        console.log(`📡 Fetching trending data for: ${slug} from Oracle CMS`);
+        
+        const response = await fetch(`${CMS_API_URL}/api/trending/${slug}/`);
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -45,6 +88,7 @@ export default function TrendingDetail() {
           return;
         }
 
+        setTrendingData(data);
         setLoading(false);
       } catch (err) {
         console.error('Error checking trending item:', err);
@@ -53,20 +97,20 @@ export default function TrendingDetail() {
       }
     };
 
-    checkTrendingExists();
+    fetchTrendingData();
   }, [slug, router]);
 
   // Fetch content for each tab
   useEffect(() => {
     const fetchTabContent = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://0.0.0.0:8001';
+        console.log('📡 Fetching tab content from Oracle CMS');
         
         const [articlesRes, newsRes, conditionsRes, wellnessRes] = await Promise.all([
-          fetch(`${apiUrl}/api/articles/latest/?limit=6`),
-          fetch(`${apiUrl}/api/news/latest/?limit=6`),
-          fetch(`${apiUrl}/api/conditions/latest/?limit=6`),
-          fetch(`${apiUrl}/api/wellness/topics/?limit=6`)
+          fetch(`${CMS_API_URL}/api/articles/latest/?limit=6&lang=en`),
+          fetch(`${CMS_API_URL}/api/news/latest/?limit=6&lang=en`),
+          fetch(`${CMS_API_URL}/api/conditions/latest/?limit=6&lang=en`),
+          fetch(`${CMS_API_URL}/api/wellness/topics/?limit=6&lang=en`)
         ]);
         
         const articlesData = await articlesRes.json();
@@ -74,11 +118,19 @@ export default function TrendingDetail() {
         const conditionsData = await conditionsRes.json();
         const wellnessData = await wellnessRes.json();
         
+        // Handle different response formats
+        const processResponse = (data) => {
+          if (Array.isArray(data)) return data;
+          if (data.results) return data.results;
+          if (data.items) return data.items;
+          return [];
+        };
+        
         setTabContent({
-          articles: articlesData || [],
-          news: newsData || [],
-          disease: conditionsData || [],
-          lifestyle: wellnessData || []
+          articles: processResponse(articlesData),
+          news: processResponse(newsData),
+          disease: processResponse(conditionsData),
+          lifestyle: processResponse(wellnessData)
         });
       } catch (err) {
         console.error('Error fetching tab content:', err);
@@ -124,11 +176,20 @@ export default function TrendingDetail() {
   };
 
   const getContentLink = (item, type) => {
+    if (!item || !item.slug) return '#';
+    
     if (type === 'articles') return `/articles/${item.slug}`;
     if (type === 'news') return `/news/${item.slug}`;
     if (type === 'disease') return `/conditions/${item.slug}`;
     if (type === 'lifestyle') return `/wellness/${item.slug}`;
     return '#';
+  };
+
+  const getItemImage = (item) => {
+    if (!item) return null;
+    
+    const imageUrl = item.image || item.thumbnail || item.feed_image;
+    return getProxiedImageUrl(imageUrl);
   };
 
   if (loading) {
@@ -187,15 +248,41 @@ export default function TrendingDetail() {
   return (
     <>
       <NextSeo
-        title="Trending Health Topics"
-        description="Explore trending health and wellness content"
+        title={trendingData?.title ? `${trendingData.title} - Trending Topics` : "Trending Health Topics"}
+        description={trendingData?.description || "Explore trending health and wellness content"}
+        openGraph={{
+          title: trendingData?.title || "Trending Health Topics",
+          description: trendingData?.description || "Explore trending health and wellness content",
+        }}
       />
 
       <div className="bg-gray-50 min-h-screen">
         <div className="container mx-auto px-4 py-8">
+          {/* Breadcrumb */}
+          <nav className="text-sm text-gray-500 mb-6">
+            <Link href="/" className="hover:text-red-600 transition-colors">
+              Home
+            </Link>
+            <span className="mx-2">/</span>
+            <Link href="/trending" className="hover:text-red-600 transition-colors">
+              Trending
+            </Link>
+            {trendingData?.title && (
+              <>
+                <span className="mx-2">/</span>
+                <span className="text-gray-700 font-medium">{trendingData.title}</span>
+              </>
+            )}
+          </nav>
+
           {/* Trending Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold">TRENDING</h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+              {trendingData?.title || 'TRENDING TOPICS'}
+            </h1>
+            {trendingData?.description && (
+              <p className="text-lg text-gray-600">{trendingData.description}</p>
+            )}
           </div>
 
           {/* Tab Navigation */}
@@ -222,7 +309,7 @@ export default function TrendingDetail() {
             </div>
           </div>
 
-          {/* Tab Content with Slider - Inside Tab Section */}
+          {/* Tab Content with Slider */}
           <div className="relative">
             {currentContent.length > 0 ? (
               <div className="py-6">
@@ -234,30 +321,49 @@ export default function TrendingDetail() {
                     {Array.from({ length: totalSlides }).map((_, slideIndex) => (
                       <div key={slideIndex} className="w-full flex-shrink-0">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {currentContent.slice(slideIndex * itemsPerSlide, (slideIndex + 1) * itemsPerSlide).map((item) => (
-                            <Link
-                              key={item.id}
-                              href={getContentLink(item, activeTab)}
-                              className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow"
-                            >
-                              {item.image && (
-                                <img
-                                  src={item.image.startsWith('http') ? item.image : `${process.env.NEXT_PUBLIC_CMS_API_URL || 'http://0.0.0.0:8001'}${item.image}`}
-                                  alt={item.title}
-                                  className="w-full h-48 object-cover"
-                                />
-                              )}
-                              <div className="p-4">
-                                {item.category && (
-                                  <span className="inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full mb-2">
-                                    {item.category.name || item.category}
-                                  </span>
+                          {currentContent.slice(slideIndex * itemsPerSlide, (slideIndex + 1) * itemsPerSlide).map((item) => {
+                            const itemImage = getItemImage(item);
+                            
+                            return (
+                              <Link
+                                key={item.id}
+                                href={getContentLink(item, activeTab)}
+                                className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow group"
+                              >
+                                {itemImage && (
+                                  <div className="relative h-48 w-full overflow-hidden">
+                                    <img
+                                      src={itemImage}
+                                      alt={item.title}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      onError={(e) => {
+                                        e.currentTarget.onerror = null;
+                                        e.currentTarget.src = 'https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=800&q=75';
+                                      }}
+                                    />
+                                  </div>
                                 )}
-                                <h3 className="text-lg font-semibold mb-2 line-clamp-2">{item.title}</h3>
-                                <p className="text-gray-600 text-sm line-clamp-3">{item.summary || item.subtitle || ''}</p>
-                              </div>
-                            </Link>
-                          ))}
+                                <div className="p-4">
+                                  {item.category && (
+                                    <span className="inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full mb-2">
+                                      {typeof item.category === 'string' ? item.category : item.category.name}
+                                    </span>
+                                  )}
+                                  <h3 className="text-lg font-semibold mb-2 line-clamp-2 group-hover:text-red-600 transition-colors">
+                                    {item.title}
+                                  </h3>
+                                  {item.publish_date && (
+                                    <p className="text-xs text-gray-500 mb-2">
+                                      {formatDate(item.publish_date)}
+                                    </p>
+                                  )}
+                                  <p className="text-gray-600 text-sm line-clamp-3">
+                                    {item.summary || item.subtitle || item.excerpt || ''}
+                                  </p>
+                                </div>
+                              </Link>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -312,6 +418,24 @@ export default function TrendingDetail() {
               </div>
             )}
           </div>
+
+          {/* Trending Tags Section */}
+          {trendingData?.tags && trendingData.tags.length > 0 && (
+            <div className="mt-12 pt-8 border-t border-gray-200">
+              <h2 className="text-xl font-bold mb-4">Related Topics</h2>
+              <div className="flex flex-wrap gap-2">
+                {trendingData.tags.map((tag) => (
+                  <Link
+                    key={tag}
+                    href={`/tags/${tag.toLowerCase().replace(/\s+/g, '-')}`}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-red-100 hover:text-red-600 transition-colors"
+                  >
+                    #{tag}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

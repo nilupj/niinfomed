@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { NextSeo } from 'next-seo';
 import { fetchDrugsIndex } from '../utils/api';
-
 export default function DrugsSupplements({ drugsByLetter }) {
   const [activeTab, setActiveTab] = useState('A');
   const [searchQuery, setSearchQuery] = useState('');

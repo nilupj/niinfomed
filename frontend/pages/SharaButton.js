@@ -1,6 +1,5 @@
 
 import { useState } from 'react';
-
 export default function ShareButton({ title, url }) {
   const [showTooltip, setShowTooltip] = useState(false);
 

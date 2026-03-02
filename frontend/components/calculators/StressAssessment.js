@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function StressAssessment() {
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState(null);

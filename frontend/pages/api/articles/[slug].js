@@ -291,7 +291,7 @@ const articles = {
     reading_time: 6
   }
 };
-
+export const runtime = "edge";
 export default function handler(req, res) {
   const { slug } = req.query;
   const article = articles[slug];

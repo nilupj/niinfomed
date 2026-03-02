@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function WaterIntakeCalculator() {
   const [weight, setWeight] = useState('');
   const [activity, setActivity] = useState('light');

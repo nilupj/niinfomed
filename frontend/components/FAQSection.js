@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function FAQSection({ faqs = [] }) {
   const [openIndex, setOpenIndex] = useState(null);
 

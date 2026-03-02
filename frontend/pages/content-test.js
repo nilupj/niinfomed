@@ -1,7 +1,5 @@
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
 export default function ContentTest() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);

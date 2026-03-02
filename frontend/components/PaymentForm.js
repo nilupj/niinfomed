@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-
+export const runtime = "edge";
 export default function PaymentForm({ amount, onSuccess }) {
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');

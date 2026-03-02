@@ -1,6 +1,6 @@
 
 import axios from 'axios';
-
+export const runtime = "edge";
 // IndexNow API implementation
 export const submitToIndexNow = async (urls) => {
   const indexNowKey = process.env.NEXT_PUBLIC_INDEXNOW_KEY;

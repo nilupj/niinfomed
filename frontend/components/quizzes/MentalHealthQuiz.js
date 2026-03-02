@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import Layout from '../Layout';
-
+export const runtime = "edge";
 export default function MentalHealthQuiz() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);

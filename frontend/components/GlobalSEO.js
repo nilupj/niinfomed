@@ -1,6 +1,6 @@
 import Head from "next/head";
 import { useRouter } from "next/router";
-
+export const runtime = "edge";
 /**
  * Global SEO Component
  * - hreflang (worldwide)

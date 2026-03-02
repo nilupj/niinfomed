@@ -3,7 +3,6 @@ import Link from 'next/link';
 import Layout from '../../components/Layout';
 import SEO from '../../components/SEO';
 import { fetchHomeopathyTopics } from '../../utils/api';
-
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500';
 

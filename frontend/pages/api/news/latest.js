@@ -1,3 +1,4 @@
+export const runtime = "edge";
 const latestNews = [
   {
     id: 101,

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { NextSeo } from 'next-seo';
 import { fetchConditionsIndex } from '../../utils/api';
-
 export default function ConditionsIndex() {
   const [activeTab, setActiveTab] = useState('A');
   const [conditionsByLetter, setConditionsByLetter] = useState({});

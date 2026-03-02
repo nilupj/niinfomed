@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-
+export const runtime = "edge";
 export const useRateLimit = (key, limit = 5, windowMs = 60000) => {
   const [attempts, setAttempts] = useState([]);
   const [isLimited, setIsLimited] = useState(false);

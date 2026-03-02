@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import SEO from '../../components/SEO';
 import { fetchRemedyBySlug } from '../../utils/api';
 import ShareButton from '../../components/ShareButton';
-
 export default function RemedyDetail() {
   const router = useRouter();
   const { slug } = router.query;

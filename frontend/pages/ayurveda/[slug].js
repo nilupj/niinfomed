@@ -5,29 +5,32 @@ import axios from "axios";
 import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
 import { useState, useEffect } from "react";
-
 import Image from "next/image";
 import { useMemo } from "react";
 
-const CMS_API_URL =
-  process.env.NEXT_PUBLIC_CMS_API_URL ||
-  (typeof window !== "undefined"
-    ? `http://${window.location.hostname}:8001`
-    : "http://127.0.0.1:8001");
+/* =========================================================
+   ✅ UPDATED: Use environment variable for CMS URL
+   No more hardcoded localhost/0.0.0.0/127.0.0.1
+========================================================= */
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
-   ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
+   ✅ FIX: Mobile cannot fetch localhost / 127.0.0.1
 ========================================================= */
 const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
-
-    base = base
-      .replace("0.0.0.0", frontendHost)
-      .replace("127.0.0.1", frontendHost)
-      .replace("localhost", frontendHost);
+    
+    // Only replace if the base contains localhost/127.0.0.1
+    // This ensures we don't break the Oracle URL
+    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
+      base = base
+        .replace("0.0.0.0", frontendHost)
+        .replace("127.0.0.1", frontendHost)
+        .replace("localhost", frontendHost);
+    }
   }
 
   return base;
@@ -35,11 +38,15 @@ const getSafeCMSUrl = () => {
 
 /* =========================================================
    ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const fixMediaUrlsInHtml = (html) => {
   if (!html) return "";
 
   return html
+    // Oracle CMS patterns
+    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
+    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
     .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
@@ -50,6 +57,8 @@ const fixMediaUrlsInHtml = (html) => {
     .replace(/src='\/media\//g, "src='/cms-media/")
     .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
@@ -61,9 +70,17 @@ const fixMediaUrlsInHtml = (html) => {
 
 /* =========================================================
    ✅ Helper: Single image URL fix
+   Updated to handle Oracle CMS URL
 ========================================================= */
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
+
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url
+      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
+      .replace('/cms-media/media/', '/cms-media/');
+  }
 
   if (url.startsWith("http://0.0.0.0:8001")) {
     return url
@@ -158,7 +175,7 @@ const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
           `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
           "g"
         ),
-        `<img src="${proxiedUrl}" alt="Ayurveda Image" class="max-w-full h-auto rounded-xl" loading="lazy" />`
+        `<img src="${proxiedUrl}" alt="Ayurveda Image" class="max-w-full w-full h-auto rounded-xl shadow my-4" loading="lazy" />`
       );
     }
 
@@ -170,7 +187,7 @@ const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
 };
 
 /* =========================================================
-   ✅ NEW: FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
+   ✅ FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
    Converts: <a linktype="page" id="75"> -> <a href="/ayurveda/slug">
 ========================================================= */
 const extractInternalPageLinkIds = (html = "") => {
@@ -185,17 +202,30 @@ const fetchWagtailPageById = async (id, safeBaseUrl) => {
     if (!res.ok) throw new Error("page fetch failed");
     return await res.json();
   } catch (err) {
+    console.error(`Error fetching page ${id}:`, err);
     return null;
   }
 };
 
 const buildFrontendUrlFromWagtailPage = (pageData) => {
+  if (!pageData) return "#";
+  
   const type = (pageData?.meta?.type || "").toLowerCase();
   const slug = pageData?.meta?.slug || pageData?.slug;
 
   if (!slug) return "#";
 
-  // Ayurveda and other route mappings
+  // Check if it's a full URL that needs transformation
+  if (slug.includes('http://') || slug.includes('https://')) {
+    // Extract just the slug part from the URL
+    const urlParts = slug.split('/');
+    const lastPart = urlParts[urlParts.length - 1];
+    if (lastPart && !lastPart.includes('.')) {
+      return `/${type.split('.')[0] || 'page'}/${lastPart}`;
+    }
+  }
+
+  // Route mappings based on page type
   if (type.includes("ayurveda")) return `/ayurveda/${slug}`;
   if (type.includes("news")) return `/news/${slug}`;
   if (type.includes("article")) return `/articles/${slug}`;
@@ -214,30 +244,54 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
 
   let updated = html;
 
-  // 1) Fix internal page links
-  const ids = extractInternalPageLinkIds(updated);
+  try {
+    // 1) Fix internal page links
+    const ids = extractInternalPageLinkIds(updated);
+    
+    if (ids.length > 0) {
+      // Fetch all pages in parallel
+      const pageDataPromises = ids.map(id => fetchWagtailPageById(id, safeBaseUrl));
+      const pageDataResults = await Promise.all(pageDataPromises);
+      
+      // Create a map of id to page data
+      const pageMap = new Map();
+      ids.forEach((id, index) => {
+        if (pageDataResults[index]) {
+          pageMap.set(id, pageDataResults[index]);
+        }
+      });
 
-  for (const id of ids) {
-    const pageData = await fetchWagtailPageById(id, safeBaseUrl);
+      // Replace each link
+      ids.forEach((id) => {
+        const pageData = pageMap.get(id);
+        const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
 
-    const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
+        updated = updated.replace(
+          new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
+          `<a$1$2href="${url}"$3>`
+        );
+      });
+    }
 
-    // Replace <a linktype="page" id="75" ...> with <a href="/ayurveda/slug" ...>
+    // 2) Fix document links
     updated = updated.replace(
-      new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-      `<a$1$2href="${url}"$3>`
+      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
+      `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
     );
+
+    // 3) Remove leftover wagtail attributes
+    updated = updated.replace(/linktype="[^"]*"/g, "");
+    updated = updated.replace(/\s?id="\d+"/g, "");
+
+    // 4) Make external links open in new tab
+    updated = updated.replace(
+      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
+      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
+    );
+
+  } catch (error) {
+    console.error("Error fixing internal links:", error);
   }
-
-  // 2) Fix document links
-  updated = updated.replace(
-    /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-    `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-  );
-
-  // 3) Remove leftover wagtail attributes
-  updated = updated.replace(/linktype="[^"]*"/g, "");
-  updated = updated.replace(/\s?id="\d+"/g, "");
 
   return updated;
 };
@@ -260,6 +314,7 @@ const extractHeadings = (html) => {
   return matches.map((m) => ({
     level: Number(m[1]),
     text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
+    id: slugify(m[2].replace(/<\/?[^>]+(>|$)/g, "").trim())
   }));
 };
 
@@ -268,11 +323,11 @@ const addHeadingIds = (html, headings) => {
 
   let updated = html;
   headings.forEach((h) => {
-    const id = slugify(h.text);
-
+    if (!h.id) return;
+    
     updated = updated.replace(
       new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${id}">${h.text}</h${h.level}>`
+      `<h${h.level}$1 id="${h.id}">${h.text}</h${h.level}>`
     );
   });
 
@@ -793,9 +848,15 @@ const TableOfContents = ({ headings = [] }) => {
 const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
   for (let url of endpoints) {
     try {
+      console.log(`🔍 Trying endpoint: ${url}`);
       const res = await axios.get(url, config);
-      if (res?.data) return { data: res.data, usedUrl: url };
-    } catch (err) {}
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
   }
   return { data: null, usedUrl: null };
 };
@@ -818,13 +879,13 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
 
   /* ✅ Content processing hooks */
   const rawBody = useMemo(
-    () => fixMediaUrls(topic?.body || "", imageMap || {}),
-    [topic?.body, imageMap]
+    () => fixMediaUrlsInHtml(topic?.body || ""),
+    [topic?.body]
   );
 
   const rawReferences = useMemo(
-    () => fixMediaUrls(topic?.references || "", imageMap || {}),
-    [topic?.references, imageMap]
+    () => fixMediaUrlsInHtml(topic?.references || ""),
+    [topic?.references]
   );
 
   /* =========================================================
@@ -926,9 +987,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
   const fallbackImage =
     "https://images.unsplash.com/photo-1542736667-069246bdbc6d?auto=format&fit=crop&w=1200&h=630";
 
-  const mainImageUrl = topic.image
-    ? getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image)
-    : fallbackImage;
+  const mainImageUrl = getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
@@ -977,7 +1036,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
                 sizes="(max-width: 768px) 100vw, 900px"
                 className="object-cover"
                 priority
-                unoptimized={mainImageUrl?.includes("127.0.0.1")}
+                unoptimized={mainImageUrl?.includes("127.0.0.1") || mainImageUrl?.includes("161.118.167.107")}
               />
             </div>
 
@@ -1178,31 +1237,45 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
 }
 
 /* =========================================================
-   STATIC GENERATION (LIKE WELLNESS)
+   STATIC GENERATION 
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
     const listEndpoints = [
-      `${CMS_API_URL}/api/ayurveda/topics/`,
-      `${CMS_API_URL}/api/v1/ayurveda/topics/`,
-      `${CMS_API_URL}/api/v1/ayurveda/`,
-      `${CMS_API_URL}/ayurveda/topics/`,
+      `${baseUrl}/api/ayurveda/topics/`,
+      `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&fields=slug`,
+      `${baseUrl}/api/v1/ayurveda/topics/`,
+      `${baseUrl}/ayurveda/topics/`,
     ];
 
+    console.log("🔍 Fetching Ayurveda paths from Oracle CMS...");
     const { data } = await tryFetchFromMultipleEndpoints(listEndpoints, {
       timeout: 10000,
-      params: { limit: 100 },
     });
 
-    const topics = Array.isArray(data) ? data : data?.results || [];
+    let topics = [];
+    if (Array.isArray(data)) {
+      topics = data;
+    } else if (data?.items) {
+      topics = data.items;
+    } else if (data?.results) {
+      topics = data.results;
+    }
 
-    const paths = topics.map((t) => ({
-      params: { slug: t.slug },
-    }));
+    console.log(`✅ Found ${topics.length} Ayurveda topics`);
+
+    const paths = topics
+      .filter(t => t.slug)
+      .map((t) => ({
+        params: { slug: t.slug },
+      }));
 
     return { paths, fallback: "blocking" };
   } catch (error) {
+    console.error("Error in getStaticPaths:", error);
     return { paths: [], fallback: "blocking" };
   }
 }
@@ -1210,20 +1283,25 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params }) {
   try {
     const slug = params.slug;
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
+    console.log(`📡 Fetching Ayurveda topic: ${slug} from Oracle CMS`);
 
     const detailEndpoints = [
-      `${CMS_API_URL}/api/ayurveda/topics/${slug}`,
-      `${CMS_API_URL}/api/ayurveda/topics/${slug}/`,
-      `${CMS_API_URL}/api/v1/ayurveda/topics/${slug}`,
-      `${CMS_API_URL}/api/v1/ayurveda/topics/${slug}/`,
-      `${CMS_API_URL}/ayurveda/topics/${slug}`,
-      `${CMS_API_URL}/ayurveda/topics/${slug}/`,
+      `${baseUrl}/api/ayurveda/topics/${slug}`,
+      `${baseUrl}/api/ayurveda/topics/${slug}/`,
+      `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&slug=${slug}`,
+      `${baseUrl}/api/v1/ayurveda/topics/${slug}`,
+      `${baseUrl}/api/v1/ayurveda/topics/${slug}/`,
+      `${baseUrl}/ayurveda/topics/${slug}`,
+      `${baseUrl}/ayurveda/topics/${slug}/`,
     ];
 
     const listEndpoints = [
-      `${CMS_API_URL}/api/ayurveda/topics/`,
-      `${CMS_API_URL}/api/v1/ayurveda/topics/`,
-      `${CMS_API_URL}/ayurveda/topics/`,
+      `${baseUrl}/api/ayurveda/topics/`,
+      `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&fields=title,slug,image,summary&limit=6`,
+      `${baseUrl}/api/v1/ayurveda/topics/`,
+      `${baseUrl}/ayurveda/topics/`,
     ];
 
     const [{ data: topic }, { data: listData }] = await Promise.all([
@@ -1237,35 +1315,52 @@ export async function getStaticProps({ params }) {
       }),
     ]);
 
-    const allTopics = Array.isArray(listData)
-      ? listData
-      : listData?.results || [];
-
-    const relatedTopics = allTopics.filter((t) => t.slug !== slug);
-
     if (!topic) {
+      console.log(`❌ Ayurveda topic not found: ${slug}`);
       return { notFound: true, revalidate: 60 };
     }
 
-    const ids = extractEmbedImageIds(topic.body || "");
+    // Handle different response formats
+    let topicData = topic;
+    if (topic.items && topic.items.length > 0) {
+      topicData = topic.items[0];
+    }
+
+    // Process list data for related topics
+    let allTopics = [];
+    if (Array.isArray(listData)) {
+      allTopics = listData;
+    } else if (listData?.items) {
+      allTopics = listData.items;
+    } else if (listData?.results) {
+      allTopics = listData.results;
+    }
+
+    const relatedTopics = allTopics
+      .filter((t) => t.slug !== slug)
+      .slice(0, 3);
+
+    // Extract image IDs for embed images
+    const ids = extractEmbedImageIds(topicData.body || "");
     const imageMap = {};
 
     await Promise.all(
       ids.map(async (id) => {
-        const url = await fetchWagtailImageUrl(id, CMS_API_URL);
+        const url = await fetchWagtailImageUrl(id, baseUrl);
         if (url) imageMap[id] = url;
       })
     );
 
     return {
       props: {
-        topic,
+        topic: topicData,
         relatedTopics,
         imageMap,
       },
       revalidate: 3600,
     };
   } catch (error) {
+    console.error(`Error fetching Ayurveda topic ${params.slug}:`, error);
     return { notFound: true, revalidate: 60 };
   }
 }

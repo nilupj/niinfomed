@@ -16,7 +16,6 @@ const getProxiedImageUrl = (url) => {
   }
   return url;
 };
-
 export default function AyurvedaIndex() {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);

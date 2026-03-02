@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Layout from '../components/Layout';
 import { NextSeo } from 'next-seo';
-
 // Server-side data fetching
 export async function getServerSideProps(context) {
   try {

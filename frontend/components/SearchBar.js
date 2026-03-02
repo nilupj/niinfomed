@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-
+export const runtime = "edge";
 export default function SearchBar() {
   const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();

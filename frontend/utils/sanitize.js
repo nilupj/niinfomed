@@ -2,6 +2,7 @@
 /**
  * Sanitize user input to prevent XSS attacks
  */
+export const runtime = "edge";
 export function sanitizeInput(input) {
   if (typeof input !== 'string') return input;
   

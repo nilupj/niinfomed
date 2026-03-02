@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
 import SearchBar from './SearchBar';
 
+export const runtime = "edge";
+
 export default function Navbar() {
-  const { data: session, status } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => setMobileMenuOpen(prev => !prev);
@@ -24,34 +24,7 @@ export default function Navbar() {
           </span>
 
           <div className="flex items-center gap-4 text-white">
-
-            {status === 'loading' ? null : session ? (
-              <div className="flex items-center gap-3">
-
-                <span className="text-sm hidden sm:block">
-                  Hello, {session.user?.name || 'User'}
-                </span>
-
-                {/* ✅ PROFILE → ACCOUNT DASHBOARD */}
-                <Link
-                  href="/account/saved"
-                  className="text-sm hover:text-blue-200"
-                >
-                  My Content
-                </Link>
-
-                <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
-                  className="text-sm hover:text-blue-200"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <Link href="/login" className="text-sm font-medium">
-                Sign In
-              </Link>
-            )}
+            {/* ❌ Auth-related code completely removed */}
           </div>
         </div>
       </div>
@@ -106,29 +79,13 @@ export default function Navbar() {
       {/* ───── MOBILE MENU ───── */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-white border-t">
-
           <MobileLink href="/conditions">Conditions</MobileLink>
           <MobileLink href="/drugs-supplements">Drugs & Supplements</MobileLink>
           <MobileLink href="/well-being">Well-Being</MobileLink>
           <MobileLink href={servicesUrl} external>🏥 Services</MobileLink>
           <MobileLink href="/symptom-checker">🩺 Symptom Checker</MobileLink>
           <MobileLink href="/health-news">📰 Health News</MobileLink>
-
-          {session ? (
-            <>
-              {/* ✅ MOBILE PROFILE FIX */}
-              <MobileLink href="/account/saved">👤 My Content</MobileLink>
-
-              <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
-                className="w-full text-left px-4 py-3 hover:bg-red-50"
-              >
-                🚪 Logout
-              </button>
-            </>
-          ) : (
-            <MobileLink href="/login">Sign In</MobileLink>
-          )}
+          {/* ❌ Mobile auth links removed */}
         </div>
       )}
     </nav>

@@ -38,7 +38,7 @@ export async function middleware(request) {
 
     try {
       const apiUrl =
-        process.env.NEXT_PUBLIC_CMS_API_URL || "http://0.0.0.0:8001";
+        process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
       // 1️⃣ Articles
       const articleRes = await fetch(
