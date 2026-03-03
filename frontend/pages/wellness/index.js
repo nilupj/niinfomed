@@ -1,10 +1,88 @@
-
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { NextSeo } from 'next-seo';
 import FeaturedArticle from '../../components/FeaturedArticle';
 import { fetchWellnessTopics } from '../../utils/api';
+
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+
+/* =========================================================
+   ✅ IMAGE HELPER FUNCTIONS
+========================================================= */
+
+/**
+ * Get proxied image URL for Oracle CMS
+ */
+const getProxiedImageUrl = (url) => {
+  if (!url) return null;
+
+  // Agar already proxied hai toh wahi return karo
+  if (url.startsWith('/cms-media/')) {
+    return url;
+  }
+
+  // Oracle CMS URL handle karo
+  if (url.includes('161.118.167.107')) {
+    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  }
+
+  // Localhost patterns handle karo
+  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
+    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
+  }
+  
+  // Relative media URLs handle karo
+  if (url.startsWith('/media/')) {
+    return `/cms-media${url.replace('/media/', '/')}`;
+  }
+  
+  // Full URLs (Unsplash, etc.) as they are
+  if (url.startsWith('http')) {
+    return url;
+  }
+  
+  return url;
+};
+
+/**
+ * Image component with fallback for errors
+ */
+const ImageWithFallback = ({ src, alt, className, width, height, priority = false, ...props }) => {
+  const [error, setError] = useState(false);
+  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
+
+  useEffect(() => {
+    setImageSrc(getProxiedImageUrl(src));
+    setError(false);
+  }, [src]);
+
+  if (error || !imageSrc) {
+    return (
+      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
+        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt || "Wellness image"}
+      className={className}
+      width={width}
+      height={height}
+      onError={() => setError(true)}
+      loading={priority ? "eager" : "lazy"}
+      decoding={priority ? "sync" : "async"}
+      {...props}
+    />
+  );
+};
 
 export default function WellnessIndex() {
   const [topics, setTopics] = useState([]);
@@ -83,21 +161,26 @@ export default function WellnessIndex() {
             </div>
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {topics.map((topic) => (
-                <FeaturedArticle
-                  key={topic.id}
-                  article={{
-                    id: topic.id,
-                    title: topic.title,
-                    slug: topic.slug,
-                    summary: topic.summary || topic.introduction || 'Learn more about this wellness topic',
-                    image: topic.image,
-                    category: { name: 'Wellness', slug: 'wellness' },
-                    published_date: topic.published_date,
-                  }}
-                  href={`/wellness/${topic.slug}`}
-                />
-              ))}
+              {topics.map((topic) => {
+                // Prepare article data for FeaturedArticle component
+                const articleData = {
+                  id: topic.id,
+                  title: topic.title,
+                  slug: topic.slug,
+                  summary: topic.summary || topic.introduction || 'Learn more about this wellness topic',
+                  image: getProxiedImageUrl(topic.image),
+                  category: { name: 'Wellness', slug: 'wellness' },
+                  published_date: topic.published_date,
+                };
+
+                return (
+                  <FeaturedArticle
+                    key={topic.id}
+                    article={articleData}
+                    href={`/wellness/${topic.slug}`}
+                  />
+                );
+              })}
             </div>
           </>
         )}
@@ -164,4 +247,26 @@ export default function WellnessIndex() {
       </div>
     </>
   );
+}
+
+// Optional: Add getStaticProps for server-side rendering
+export async function getStaticProps() {
+  try {
+    const topics = await fetchWellnessTopics(50);
+    
+    return {
+      props: {
+        initialTopics: topics || [],
+      },
+      revalidate: 3600, // Revalidate every hour
+    };
+  } catch (error) {
+    console.error('Error in getStaticProps:', error);
+    return {
+      props: {
+        initialTopics: [],
+      },
+      revalidate: 60,
+    };
+  }
 }
