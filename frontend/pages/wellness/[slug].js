@@ -7,187 +7,114 @@ import SEO from "../../components/SEO";
 import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
 
-const CMS_API_URL =
-  process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
-   ✅ COMPREHENSIVE WAGTAIL URL TRANSFORMATION
+   ✅ IMAGE URL HELPER - UPDATED FOR ORACLE CMS
 ========================================================= */
 
 /**
- * Extract ALL href URLs from HTML
+ * Get proxied image URL for Oracle CMS
+ */
+const getProxiedImageUrl = (url) => {
+  if (!url) return null;
+
+  // Agar already proxied hai toh wahi return karo
+  if (url.startsWith('/cms-media/')) {
+    return url;
+  }
+
+  // Oracle CMS URL handle karo
+  if (url.includes('161.118.167.107')) {
+    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  }
+
+  // Localhost patterns handle karo
+  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
+    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
+  }
+  
+  // Relative media URLs handle karo
+  if (url.startsWith('/media/')) {
+    return `/cms-media${url.replace('/media/', '/')}`;
+  }
+  
+  // Full URLs (Unsplash, etc.) as they are
+  if (url.startsWith('http')) {
+    return url;
+  }
+  
+  return url;
+};
+
+/**
+ * ✅ COMPREHENSIVE WAGTAIL URL TRANSFORMATION (unchanged)
  */
 const extractAllHrefUrls = (html = "") => {
   if (!html) return [];
-  
   const matches = [...html.matchAll(/href="([^"]*)"/g)];
   return matches.map(m => m[1]);
 };
 
-/**
- * TRANSFORM WAGTAIL URL TO NEXT.JS ROUTE - Comprehensive version
- */
 const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
   if (!wagtailUrl || wagtailUrl === "#") return "#";
   
   let path = wagtailUrl;
-  
-  // Remove domain and protocol
   path = path.replace(/https?:\/\/[^\/]+\//, '/');
+  if (!path.startsWith('/')) path = '/' + path;
   
-  // Ensure it starts with /
-  if (!path.startsWith('/')) {
-    path = '/' + path;
-  }
-  
-  // SPECIAL CASE MAPPING
   const directMappings = {
-    // Homeopathy patterns
-    '/all-homeopathic-pages/9-worst-habits-for-muscles': '/homeopathy/9-worst-habits-for-muscles',
     '/all-homeopathic-pages/': '/homeopathy/',
     '/all-homeopathy/': '/homeopathy/',
-    
-    // Ayurveda patterns
-    '/all-ayurvedic-pages/ten-drinks-that-fight-pain-and-inflammation': '/ayurveda/ten-drinks-that-fight-pain-and-inflammation',
     '/all-ayurvedic-pages/': '/ayurveda/',
     '/all-ayurveda/': '/ayurveda/',
-    
-    // News patterns
-    '/all-news/what-drinking-kefir-really-does-to-your-gut-and-oral-microbiome': '/news/what-drinking-kefir-really-does-to-your-gut-and-oral-microbiome',
     '/all-news-pages/': '/news/',
     '/all-news/': '/news/',
-    
-    // Wellness patterns
-    '/all-wellness-pages/whats-normal-aging': '/wellness/whats-normal-aging',
     '/all-wellness-pages/': '/wellness/',
     '/all-wellness/': '/wellness/',
-    
-    // Conditions patterns
-    '/all-conditions-a-z/conditions/condition/type-1-diabetes': '/conditions/type-1-diabetes',
-    '/all-conditions/conditions/condition/': '/conditions/',
     '/all-conditions-a-z/': '/conditions/',
     '/all-conditions/': '/conditions/',
-    
-    // Drugs patterns
-    '/all-drugs-a-z-pages/all-drugs-pages/drugs/pancreaze-pancrelipase-uses-side-effects-and-more': '/drugs/pancreaze-pancrelipase-uses-side-effects-and-more',
-    '/all-drugs-pages/drugs/': '/drugs/',
     '/all-drugs-a-z-pages/': '/drugs/',
+    '/all-drugs-pages/': '/drugs/',
     '/all-drugs/': '/drugs/',
-    
-    // Yoga patterns
-    '/all-yoga-pages/exercise-and-weight-loss': '/yoga-exercise/exercise-and-weight-loss',
     '/all-yoga-pages/': '/yoga-exercise/',
     '/all-yoga/': '/yoga-exercise/',
-    
-    // Articles patterns
     '/all-article-pages/': '/articles/',
     '/all-articles/': '/articles/',
-    
-    // Localhost patterns
-    '/localhost:5000/all-homeopathic-pages/': '/homeopathy/',
-    '/localhost:5000/all-news/': '/news/',
-    '/localhost:5000/all-ayurvedic-pages/': '/ayurveda/',
-    '/localhost:5000/all-wellness-pages/': '/wellness/',
   };
   
-  // Check for exact matches first
-  for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
-    if (path === wagtailPattern) {
-      return nextRoute;
-    }
-  }
-  
-  // Check for pattern matches
   for (const [wagtailPattern, nextRoute] of Object.entries(directMappings)) {
     if (path.startsWith(wagtailPattern)) {
       const slug = path.replace(wagtailPattern, '');
       if (slug) {
-        const finalRoute = nextRoute.endsWith('/') 
-          ? `${nextRoute}${slug}`
-          : `${nextRoute}/${slug}`;
+        const finalRoute = nextRoute.endsWith('/') ? `${nextRoute}${slug}` : `${nextRoute}/${slug}`;
         return finalRoute;
       }
     }
   }
   
-  // DYNAMIC TRANSFORMATION
-  if (path.includes('/all-')) {
-    const parts = path.split('/').filter(p => p);
-    const allIndex = parts.findIndex(p => p.startsWith('all-'));
-    
-    if (allIndex !== -1) {
-      const allPart = parts[allIndex];
-      
-      const categoryMap = {
-        'all-homeopathic-pages': 'homeopathy',
-        'all-homeopathy': 'homeopathy',
-        'all-ayurvedic-pages': 'ayurveda',
-        'all-ayurveda': 'ayurveda',
-        'all-news-pages': 'news',
-        'all-news': 'news',
-        'all-wellness-pages': 'wellness',
-        'all-wellness': 'wellness',
-        'all-conditions-a-z': 'conditions',
-        'all-conditions': 'conditions',
-        'all-drugs-a-z-pages': 'drugs',
-        'all-drugs-pages': 'drugs',
-        'all-drugs': 'drugs',
-        'all-yoga-pages': 'yoga-exercise',
-        'all-yoga': 'yoga-exercise',
-        'all-article-pages': 'articles',
-        'all-articles': 'articles'
-      };
-      
-      const category = categoryMap[allPart];
-      
-      if (category) {
-        const slug = parts[parts.length - 1];
-        if (slug && slug !== category && !slug.startsWith('all-')) {
-          return `/${category}/${slug}`;
-        }
-      }
-    }
-  }
-  
-  // If it's already a clean route, return it
-  const cleanRoutes = [
-    '/homeopathy/', '/ayurveda/', '/news/', '/wellness/', 
-    '/conditions/', '/drugs/', '/articles/', '/yoga-exercise/'
-  ];
-  
+  const cleanRoutes = ['/homeopathy/', '/ayurveda/', '/news/', '/wellness/', '/conditions/', '/drugs/', '/articles/', '/yoga-exercise/'];
   for (const route of cleanRoutes) {
-    if (path.startsWith(route)) {
-      return path;
-    }
+    if (path.startsWith(route)) return path;
   }
   
   return "#";
 };
 
-/**
- * FIX ALL WAGTAIL LINKS IN HTML CONTENT
- */
 const fixWagtailLinks = (html = "") => {
   if (!html) return html;
-  
   let updatedHtml = html;
   
   try {
-    // PHASE 1: Extract all href URLs
     const allHrefs = extractAllHrefUrls(updatedHtml);
-    
-    // PHASE 2: Filter for wagtail patterns
     const wagtailHrefs = allHrefs.filter(href => 
-      href.includes('all-') || 
-      href.includes('localhost') || 
-      href.includes('127.0.0.1') ||
-      href.includes('0.0.0.0')
+      href.includes('all-') || href.includes('localhost') || href.includes('127.0.0.1') || href.includes('0.0.0.0')
     );
     
     if (wagtailHrefs.length > 0) {
       wagtailHrefs.forEach(wagtailUrl => {
         const transformedUrl = transformWagtailUrlToNextRoute(wagtailUrl);
-        
         if (transformedUrl !== "#" && transformedUrl !== wagtailUrl) {
           const escapedUrl = wagtailUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`href="${escapedUrl}"`, 'g');
@@ -196,60 +123,34 @@ const fixWagtailLinks = (html = "") => {
       });
     }
     
-    // PHASE 3: Apply pattern-based replacements
     const patternReplacements = [
-      // Homeopathy
       { pattern: /href="[^"]*\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
       { pattern: /href="[^"]*\/all-homeopathy\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
-      
-      // Ayurveda
       { pattern: /href="[^"]*\/all-ayurvedic-pages\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
       { pattern: /href="[^"]*\/all-ayurveda\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
-      
-      // News
       { pattern: /href="[^"]*\/all-news-pages\/([^"]+)"/g, replacement: 'href="/news/$1"' },
       { pattern: /href="[^"]*\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
-      
-      // Wellness
       { pattern: /href="[^"]*\/all-wellness-pages\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
       { pattern: /href="[^"]*\/all-wellness\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
-      
-      // Conditions
       { pattern: /href="[^"]*\/all-conditions-a-z\/conditions\/condition\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
       { pattern: /href="[^"]*\/all-conditions\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
-      
-      // Drugs
       { pattern: /href="[^"]*\/all-drugs-a-z-pages\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
       { pattern: /href="[^"]*\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
       { pattern: /href="[^"]*\/all-drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
-      
-      // Yoga
       { pattern: /href="[^"]*\/all-yoga-pages\/([^"]+)"/g, replacement: 'href="/yoga-exercise/$1"' },
       { pattern: /href="[^"]*\/all-yoga\/([^"]+)"/g, replacement: 'href="/yoga-exercise/$1"' },
-      
-      // Articles
       { pattern: /href="[^"]*\/all-article-pages\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
       { pattern: /href="[^"]*\/all-articles\/([^"]+)"/g, replacement: 'href="/articles/$1"' },
-      
-      // Localhost patterns
-      { pattern: /href="http:\/\/localhost:5000\/all-homeopathic-pages\/([^"]+)"/g, replacement: 'href="/homeopathy/$1"' },
-      { pattern: /href="http:\/\/localhost:5000\/all-news\/([^"]+)"/g, replacement: 'href="/news/$1"' },
-      { pattern: /href="http:\/\/localhost:5000\/all-ayurvedic-pages\/([^"]+)"/g, replacement: 'href="/ayurveda/$1"' },
-      { pattern: /href="http:\/\/localhost:5000\/all-wellness-pages\/([^"]+)"/g, replacement: 'href="/wellness/$1"' },
-      { pattern: /href="http:\/\/localhost:5000\/all-conditions-a-z\/conditions\/condition\/([^"]+)"/g, replacement: 'href="/conditions/$1"' },
-      { pattern: /href="http:\/\/localhost:5000\/all-drugs-a-z-pages\/all-drugs-pages\/drugs\/([^"]+)"/g, replacement: 'href="/drugs/$1"' },
     ];
     
     patternReplacements.forEach(({ pattern, replacement }) => {
       updatedHtml = updatedHtml.replace(pattern, replacement);
     });
     
-    // Remove any leftover Wagtail attributes
     updatedHtml = updatedHtml.replace(/linktype="[^"]*"/g, '');
     updatedHtml = updatedHtml.replace(/\s?parent-id="\d+"/g, '');
     updatedHtml = updatedHtml.replace(/\s?id="\d+"/g, '');
     
-    // Make external links open in new tab
     updatedHtml = updatedHtml.replace(
       /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
       `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
@@ -263,7 +164,99 @@ const fixWagtailLinks = (html = "") => {
 };
 
 /* =========================================================
-   ✅ DATE DISPLAY FUNCTIONS
+   ✅ MEDIA URL FIXER - UPDATED
+========================================================= */
+
+const fixMediaUrls = (html = "") => {
+  if (!html) return "";
+
+  let processed = html;
+
+  // Replace embed images
+  processed = processed.replace(
+    /<embed\s+[^>]*embedtype="image"[^>]*id="(\d+)"[^>]*\/?>/g,
+    (match, id) => {
+      return `<img src="${CMS_API_URL}/api/v2/images/${id}/" alt="CMS Image" class="max-w-full h-auto rounded-lg" loading="lazy" width="800" height="450" />`;
+    }
+  );
+
+  // Replace media URLs with proxied paths
+  processed = processed.replace(/src="\/media\//g, `src="/cms-media/`);
+  processed = processed.replace(/src='\/media\//g, `src='/cms-media/`);
+  processed = processed.replace(/srcset="\/media\//g, `srcset="/cms-media/`);
+  processed = processed.replace(/srcset='\/media\//g, `srcset='/cms-media/`);
+  
+  // Replace Oracle CMS URLs with proxied paths
+  processed = processed.replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, `src="/cms-media/`);
+  processed = processed.replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, `src='/cms-media/`);
+  
+  // Replace url() references
+  processed = processed.replace(/url\(\/media\//g, `url(/cms-media/`);
+  processed = processed.replace(/url\('\/media\//g, `url('/cms-media/`);
+  processed = processed.replace(/url\("\/media\//g, `url("/cms-media/`);
+  
+  // Clean up double slashes
+  processed = processed.replace(/\/cms-media\/media\//g, '/cms-media/');
+
+  return processed;
+};
+
+/**
+ * ✅ COMPREHENSIVE CONTENT FIXER
+ */
+const fixContentUrls = (html = "") => {
+  if (!html) return "";
+  
+  // 1. Fix media URLs (images)
+  let processed = fixMediaUrls(html);
+  
+  // 2. Fix Wagtail links
+  processed = fixWagtailLinks(processed);
+  
+  return processed;
+};
+
+/* =========================================================
+   ✅ Image Component with Fallback
+========================================================= */
+
+const ImageWithFallback = ({ src, alt, className, width, height, priority = false, ...props }) => {
+  const [error, setError] = useState(false);
+  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
+
+  useEffect(() => {
+    setImageSrc(getProxiedImageUrl(src));
+    setError(false);
+  }, [src]);
+
+  if (error || !imageSrc) {
+    return (
+      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
+        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt || "Wellness image"}
+      className={className}
+      width={width}
+      height={height}
+      onError={() => setError(true)}
+      loading={priority ? "eager" : "lazy"}
+      decoding={priority ? "sync" : "async"}
+      {...props}
+    />
+  );
+};
+
+/* =========================================================
+   ✅ DATE DISPLAY FUNCTIONS (unchanged)
 ========================================================= */
 
 const isValidDate = (dateStr) => {
@@ -431,7 +424,6 @@ const DateDisplay = ({ publishedDate, updatedDate, compact = false, className = 
   
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Primary Date */}
       <div className="flex items-start gap-3">
         <div className={`flex-shrink-0 w-12 h-12 rounded-lg flex flex-col items-center justify-center ${
           dateConfig.isRecent ? 'bg-green-50' : 'bg-blue-50'
@@ -480,7 +472,6 @@ const DateDisplay = ({ publishedDate, updatedDate, compact = false, className = 
         </div>
       </div>
       
-      {/* Secondary Date */}
       {dateConfig.showSecondary && dateConfig.secondaryDate && (
         <div className="pl-15 border-l-2 border-gray-200 pl-4 ml-4">
           <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
@@ -502,52 +493,6 @@ const DateDisplay = ({ publishedDate, updatedDate, compact = false, className = 
 /* =========================================================
    ✅ HELPER FUNCTIONS
 ========================================================= */
-
-const fixMediaUrls = (html = "") => {
-  if (!html) return "";
-
-  let processed = html;
-
-  processed = processed.replace(
-    /<embed\s+[^>]*embedtype="image"[^>]*id="(\d+)"[^>]*\/?>/g,
-    (match, id) => {
-      return `<img src="${CMS_API_URL}/images/${id}/original/" alt="CMS Image" class="max-w-full h-auto rounded-lg" loading="lazy" width="800" height="450" />`;
-    }
-  );
-
-  processed = processed.replace(/src="\/media\//g, `src="${CMS_API_URL}/media/`);
-  processed = processed.replace(/src='\/media\//g, `src='${CMS_API_URL}/media/`);
-
-  processed = processed.replace(/url\(\/media\//g, `url(${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\('\/media\//g, `url('${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\("\/media\//g, `url("${CMS_API_URL}/media/`);
-
-  return processed;
-};
-
-/**
- * ✅ COMPREHENSIVE CONTENT FIXER
- */
-const fixContentUrls = (html = "") => {
-  if (!html) return "";
-  
-  // 1. Fix media URLs
-  let processed = fixMediaUrls(html);
-  
-  // 2. Fix Wagtail links
-  processed = fixWagtailLinks(processed);
-  
-  return processed;
-};
-
-const getAbsoluteImageUrl = (url) => {
-  if (!url) return null;
-
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/media/") || url.startsWith("/images/")) return `${CMS_API_URL}${url}`;
-
-  return url;
-};
 
 const makeHeadingId = (text = "") => {
   return text
@@ -778,7 +723,7 @@ export default function WellnessDetail({
     const imageLoader = typeof window !== 'undefined' ? new window.Image() : null;
     
     if (imageLoader) {
-      const imageUrl = getAbsoluteImageUrl(topic.image);
+      const imageUrl = getProxiedImageUrl(topic.image);
       imageLoader.src = imageUrl;
       imageLoader.onload = () => {
         setHeroImageLoaded(true);
@@ -818,7 +763,7 @@ export default function WellnessDetail({
   }
 
   const fallbackImage = "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1200&h=630&q=75";
-  const mainImageUrl = initialMainImageUrl || getAbsoluteImageUrl(topic.image) || fallbackImage;
+  const mainImageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic);
   const authorSlug = getAuthorSlug(topic);
@@ -842,28 +787,25 @@ export default function WellnessDetail({
   return (
     <>
       <Head>
-        {/* ✅ Critical CSS for LCP */}
         <style dangerouslySetInnerHTML={{ __html: criticalCSS }} />
         
-        {/* ✅ Preload LCP image */}
         <link 
           rel="preload" 
           as="image" 
-          href={mainImageUrl} 
+          href={getProxiedImageUrl(mainImageUrl)} 
           fetchPriority="high"
         />
         
-        {/* ✅ Preconnect to image domains */}
         <link rel="preconnect" href="https://images.unsplash.com" />
-        {mainImageUrl.includes('localhost') && (
-          <link rel="preconnect" href={new URL(mainImageUrl).origin} />
+        {mainImageUrl.includes('161.118.167.107') && (
+          <link rel="preconnect" href="http://161.118.167.107" />
         )}
       </Head>
 
       <SEO
         title={`${topic.title} - Wellness - Niinfomed`}
         description={topic.summary?.substring(0, 160) || topic.title}
-        image={mainImageUrl}
+        image={getProxiedImageUrl(mainImageUrl)}
         openGraph={{
           type: 'article',
           article: {
@@ -899,22 +841,16 @@ export default function WellnessDetail({
           <div className="grid lg:grid-cols-[1fr_320px] gap-10">
             {/* Main Content */}
             <article className="above-fold">
-              {/* Hero Image - CRITICAL FOR LCP */}
+              {/* Hero Image - Using ImageWithFallback */}
               {topic.image && (
                 <div className="relative w-full h-64 md:h-96 rounded-2xl overflow-hidden shadow-lg mb-6 hero-container">
-                  <img
+                  <ImageWithFallback
                     src={mainImageUrl}
                     alt={topic.title}
                     className="w-full h-full object-cover"
-                    loading="eager" // ✅ Force eager loading for LCP
-                    decoding="async"
                     width={1200}
                     height={630}
-                    onLoad={() => setHeroImageLoaded(true)}
-                    onError={(e) => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.src = fallbackImage;
-                    }}
+                    priority={true}
                   />
                 </div>
               )}
@@ -1016,7 +952,7 @@ export default function WellnessDetail({
                   <h2 className="text-2xl font-bold mb-6">About {topic.title}</h2>
 
                   <div
-                    className="prose prose-lg max-w-none"
+                    className="prose prose-lg max-w-none prose-img:rounded-lg prose-img:shadow-md prose-img:max-w-full prose-img:h-auto"
                     dangerouslySetInnerHTML={{
                       __html: processedBody,
                     }}
@@ -1121,45 +1057,35 @@ export default function WellnessDetail({
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
                     <h3 className="text-lg font-bold mb-4">Related Topics</h3>
                     <div className="space-y-4">
-                      {relatedTopics.slice(0, 3).map((item) => {
-                        const relatedImage = getAbsoluteImageUrl(item.image) || fallbackImage;
-
-                        return (
-                          <Link
-                            key={item.id}
-                            href={`/wellness/${item.slug}`}
-                            className="block group"
-                            prefetch={false}
-                          >
-                            <div className="flex gap-3 items-start">
-                              <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                                <img
-                                  src={relatedImage}
-                                  alt={item.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  loading="lazy"
-                                  decoding="async"
-                                  width={80}
-                                  height={64}
-                                  onError={(e) => {
-                                    e.currentTarget.onerror = null;
-                                    e.currentTarget.src = fallbackImage;
-                                  }}
-                                />
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-sm text-gray-800 group-hover:text-blue-600 line-clamp-2">
-                                  {item.title}
-                                </p>
-                                <p className="text-xs text-gray-500 line-clamp-2 mt-1">
-                                  {item.summary?.substring(0, 80) || "Learn more about wellness"}
-                                </p>
-                              </div>
+                      {relatedTopics.slice(0, 3).map((item) => (
+                        <Link
+                          key={item.id}
+                          href={`/wellness/${item.slug}`}
+                          className="block group"
+                          prefetch={false}
+                        >
+                          <div className="flex gap-3 items-start">
+                            <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                              <ImageWithFallback
+                                src={item.image}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                width={80}
+                                height={64}
+                              />
                             </div>
-                          </Link>
-                        );
-                      })}
+
+                            <div>
+                              <p className="font-semibold text-sm text-gray-800 group-hover:text-blue-600 line-clamp-2">
+                                {item.title}
+                              </p>
+                              <p className="text-xs text-gray-500 line-clamp-2 mt-1">
+                                {item.summary?.substring(0, 80) || "Learn more about wellness"}
+                              </p>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1172,40 +1098,34 @@ export default function WellnessDetail({
             <div className="mt-12 lg:hidden">
               <h2 className="text-2xl font-bold mb-6">Related Wellness Topics</h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {relatedTopics.slice(0, 3).map((item) => {
-                  const relatedImage = getAbsoluteImageUrl(item.image) || fallbackImage;
-
-                  return (
-                    <Link
-                      key={item.id}
-                      href={`/wellness/${item.slug}`}
-                      className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-                      prefetch={false}
-                    >
-                      <div className="h-48 w-full overflow-hidden">
-                        <img
-                          src={relatedImage}
-                          alt={item.title}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                          decoding="async"
-                          width={400}
-                          height={240}
-                        />
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-bold text-gray-800 mb-2 line-clamp-2">
-                          {item.title}
-                        </h3>
-                        {item.summary && (
-                          <p className="text-sm text-gray-600 line-clamp-2">
-                            {item.summary}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
+                {relatedTopics.slice(0, 3).map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/wellness/${item.slug}`}
+                    className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
+                    prefetch={false}
+                  >
+                    <div className="h-48 w-full overflow-hidden">
+                      <ImageWithFallback
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                        width={400}
+                        height={240}
+                      />
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-bold text-gray-800 mb-2 line-clamp-2">
+                        {item.title}
+                      </h3>
+                      {item.summary && (
+                        <p className="text-sm text-gray-600 line-clamp-2">
+                          {item.summary}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
               </div>
             </div>
           )}
@@ -1292,7 +1212,7 @@ export async function getStaticProps({ params }) {
     }
     
     // Optimize main image URL
-    const mainImageUrl = getAbsoluteImageUrl(topic.image);
+    const mainImageUrl = topic.image || null;
     
     console.log(`✅ Generated wellness article ${params.slug} in ${Date.now() - start}ms`);
     
