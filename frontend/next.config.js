@@ -1,13 +1,11 @@
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
-  output: "standalone",   // ⭐ REQUIRED for OpenNext + Cloudflare
-
+  output: "standalone",
   reactStrictMode: true,
 
   images: {
     unoptimized: true,
-
     remotePatterns: [
       {
         protocol: "http",
@@ -62,7 +60,8 @@ const nextConfig = {
 
   trailingSlash: false,
 
-  swcMinify: true,
+  // ✅ Remove this line to eliminate warning
+  // swcMinify: true,
 
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
