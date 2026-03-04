@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { NextSeo } from 'next-seo';
+import axios from 'axios';
 import {
   fetchCondition,
   fetchConditionPaths,
@@ -41,6 +42,26 @@ const LANGUAGE_ALTERNATES = [
   { hrefLang: 'as', path: '/as' },
   { hrefLang: 'x-default', path: '' },
 ];
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ SLUG UTILITIES
@@ -1395,24 +1416,64 @@ export default function ConditionDetail({
   );
 }
 
-// Updated getStaticPaths to use slug IDs
+// Updated getStaticPaths to use multiple endpoint attempts
 export async function getStaticPaths() {
   try {
-    const conditions = await fetchConditionsIndex();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     
-    const paths = conditions.map((condition) => {
-      // Generate slug with ID
-      const slug = getConditionCanonicalUrl(condition.title || condition.name, condition.id);
-      // Remove leading slash and get just the slug part
-      const slugPart = slug.replace('/conditions/', '');
-      
-      return { params: { slug: slugPart } };
-    });
+    const endpoints = [
+      `${baseUrl}/api/conditions/paths`,
+      `${baseUrl}/api/conditions/paths/`,
+      `${baseUrl}/api/conditions/`,
+    ];
+
+    console.log("🔍 Fetching condition paths from Oracle CMS...");
     
-    console.log(`📁 Generated ${paths.length} static paths for conditions`);
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          // If it's an array of strings (slugs)
+          if (data.every(item => typeof item === 'string')) {
+            paths = data.map(slug => ({ params: { slug } }));
+            break;
+          }
+          // If it's an array of objects
+          paths = data.map(item => {
+            const title = item.title || item.name;
+            const id = item.id;
+            if (title && id) {
+              const slug = generateSlug(title);
+              return { params: { slug: `${slug}-${id}` } };
+            }
+            return { params: { slug: item.slug } };
+          }).filter(p => p.params.slug);
+          break;
+        } else if (data.results) {
+          paths = data.results.map(item => {
+            const title = item.title || item.name;
+            const id = item.id;
+            if (title && id) {
+              const slug = generateSlug(title);
+              return { params: { slug: `${slug}-${id}` } };
+            }
+            return { params: { slug: item.slug } };
+          }).filter(p => p.params.slug);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
+
+    console.log(`✅ Generated ${paths.length} static paths for conditions`);
     
     return {
-      paths: paths,
+      paths,
       fallback: 'blocking',
     };
   } catch (error) {
@@ -1424,47 +1485,149 @@ export async function getStaticPaths() {
   }
 }
 
-// Updated getStaticProps to handle slug with ID
+// Updated getStaticProps with multiple endpoint attempts
 export async function getStaticProps({ params }) {
   try {
     const { slug } = params;
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     
     // Parse the slug to extract ID
     const { slug: conditionSlug, id } = parseConditionSlug(String(slug));
     
     console.log(`📄 Fetching condition with slug: ${slug}, parsed:`, { conditionSlug, id });
+
+    // Try multiple endpoints for condition detail
+    const detailEndpoints = [
+      id ? `${baseUrl}/api/conditions/${id}/` : null,
+      `${baseUrl}/api/conditions/${conditionSlug || slug}/`,
+      `${baseUrl}/api/conditions/${conditionSlug || slug}`,
+      `${baseUrl}/api/conditions/detail/${conditionSlug || slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${conditionSlug || slug}&type=conditions.ConditionPage`,
+    ].filter(Boolean);
+
+    let condition = null;
     
-    // Use ID if available, otherwise use the full slug
-    const condition = await fetchCondition(id || conditionSlug || slug);
+    for (const endpoint of detailEndpoints) {
+      try {
+        console.log(`🔄 Trying: ${endpoint}`);
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            condition = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            condition = response.data.results[0];
+          } else {
+            condition = response.data;
+          }
+          
+          if (condition) {
+            console.log(`✅ Found condition at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
 
     if (!condition) {
       console.warn(`Condition not found for slug: ${slug}`);
-      return { notFound: true };
+      return { notFound: true, revalidate: 60 };
     }
 
+    // Fetch related data with multiple endpoint attempts
     let relatedConditions = [];
     let relatedNews = [];
     let relatedDrugs = [];
 
     try {
-      const conditions = await fetchConditionsIndex();
-      relatedConditions = (conditions || [])
-        .filter(c => c.id !== condition.id)
-        .slice(0, 6) || [];
+      const conditionsEndpoints = [
+        `${baseUrl}/api/conditions/`,
+        `${baseUrl}/api/conditions/index/`,
+      ];
+      
+      for (const endpoint of conditionsEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { 
+            timeout: 10000,
+            params: { limit: 10 }
+          });
+          
+          if (response.data) {
+            if (Array.isArray(response.data)) {
+              relatedConditions = response.data
+                .filter(c => c.id !== condition.id)
+                .slice(0, 6);
+            } else if (response.data.results) {
+              relatedConditions = response.data.results
+                .filter(c => c.id !== condition.id)
+                .slice(0, 6);
+            }
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Conditions endpoint failed: ${endpoint}`);
+        }
+      }
     } catch (e) {
       console.log('Could not fetch related conditions');
     }
 
     try {
-      const news = await fetchNews();
-      relatedNews = (news?.results || news || []).slice(0, 5);
+      const newsEndpoints = [
+        `${baseUrl}/api/news/latest/`,
+        `${baseUrl}/api/news/`,
+      ];
+      
+      for (const endpoint of newsEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { 
+            timeout: 10000,
+            params: { limit: 5 }
+          });
+          
+          if (response.data) {
+            if (Array.isArray(response.data)) {
+              relatedNews = response.data.slice(0, 5);
+            } else if (response.data.results) {
+              relatedNews = response.data.results.slice(0, 5);
+            }
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ News endpoint failed: ${endpoint}`);
+        }
+      }
     } catch (e) {
       console.log('Could not fetch related news');
     }
 
     try {
-      const drugs = await fetchDrugs();
-      relatedDrugs = (drugs?.results || drugs || []).slice(0, 5);
+      const drugsEndpoints = [
+        `${baseUrl}/api/drugs/`,
+        `${baseUrl}/api/drugs/index/`,
+      ];
+      
+      for (const endpoint of drugsEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { 
+            timeout: 10000,
+            params: { limit: 5 }
+          });
+          
+          if (response.data) {
+            if (Array.isArray(response.data)) {
+              relatedDrugs = response.data.slice(0, 5);
+            } else if (response.data.results) {
+              relatedDrugs = response.data.results.slice(0, 5);
+            }
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Drugs endpoint failed: ${endpoint}`);
+        }
+      }
     } catch (e) {
       console.log('Could not fetch related drugs');
     }
@@ -1480,6 +1643,6 @@ export async function getStaticProps({ params }) {
     };
   } catch (error) {
     console.error(`Error fetching condition ${params.slug}:`, error);
-    return { notFound: true };
+    return { notFound: true, revalidate: 60 };
   }
 }
