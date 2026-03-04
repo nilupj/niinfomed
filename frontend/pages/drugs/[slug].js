@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import axios from 'axios';
 import { fetchDrugDetails } from '../../utils/api';
 import { NextSeo } from 'next-seo';
 import {
@@ -13,6 +14,25 @@ import ReferencesSection from '../../components/ReferencesSection';
 
 // Oracle CMS URL
 const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ FIX: Use Oracle CMS URL instead of localhost
@@ -841,20 +861,55 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
         setLoading(true);
         try {
           console.log("📡 Fetching drug data from:", `${safeApiUrl}/api/drugs/${slug}/`);
-          const response = await fetch(`${safeApiUrl}/api/drugs/${slug}/`, {
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-          });
+          
+          // Try multiple endpoints
+          const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+          const endpoints = [
+            `${baseUrl}/api/drugs/${slug}/`,
+            `${baseUrl}/api/drugs/${slug}`,
+            `${baseUrl}/api/drugs/detail/${slug}/`,
+            `${baseUrl}/api/v2/pages/?slug=${slug}&type=drugs.DrugPage`,
+          ];
+          
+          let drugData = null;
+          
+          for (const endpoint of endpoints) {
+            try {
+              const response = await fetch(endpoint, {
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+              });
 
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              if (response.ok) {
+                const data = await response.json();
+                
+                // Handle different response formats
+                if (data.items && data.items.length > 0) {
+                  drugData = data.items[0];
+                } else if (data.results && data.results.length > 0) {
+                  drugData = data.results[0];
+                } else {
+                  drugData = data;
+                }
+                
+                if (drugData) {
+                  console.log(`✅ Found drug at: ${endpoint}`);
+                  break;
+                }
+              }
+            } catch (err) {
+              console.log(`❌ Endpoint failed: ${endpoint}`);
+            }
           }
 
-          const data = await response.json();
-          setDrug(data);
-          setError(null);
+          if (drugData) {
+            setDrug(drugData);
+            setError(null);
+          } else {
+            throw new Error('Drug not found');
+          }
         } catch (err) {
           console.error('Error fetching drug:', err);
           setError(`Failed to load drug information: ${err.message}`);
@@ -1269,34 +1324,61 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION
+   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
     
-    console.log("📡 Fetching drug paths from:", `${apiUrl}/api/drugs/`);
-    const response = await fetch(`${apiUrl}/api/drugs/`, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
+    const endpoints = [
+      `${baseUrl}/api/drugs/`,
+      `${baseUrl}/api/drugs`,
+      `${baseUrl}/api/drugs/index/`,
+    ];
 
-    if (!response.ok) {
-      console.warn(`Failed to fetch drug paths: ${response.status}`);
-      return { paths: [], fallback: 'blocking' };
+    console.log("📡 Fetching drug paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          paths = data
+            .filter(drug => drug?.slug && typeof drug.slug === 'string')
+            .map((drug) => ({
+              params: { slug: drug.slug },
+            }));
+          break;
+        } else if (data.results) {
+          paths = data.results
+            .filter(drug => drug?.slug && typeof drug.slug === 'string')
+            .map((drug) => ({
+              params: { slug: drug.slug },
+            }));
+          break;
+        } else if (data.items) {
+          paths = data.items
+            .filter(drug => drug?.slug && typeof drug.slug === 'string')
+            .map((drug) => ({
+              params: { slug: drug.slug },
+            }));
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
     }
-
-    const data = await response.json();
-    const drugs = Array.isArray(data) ? data : data.results || [];
-
-    const paths = drugs
-      .filter(drug => drug?.slug && typeof drug.slug === 'string')
-      .map((drug) => ({
-        params: { slug: drug.slug },
-      }));
 
     console.log(`✅ Generated ${paths.length} static paths for drugs`);
     return {
@@ -1318,34 +1400,54 @@ export async function getStaticProps({ params }) {
   }
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const slug = params.slug;
     
-    console.log(`📡 Fetching drug ${params.slug} from:`, `${apiUrl}/api/drugs/${params.slug}/`);
-    const response = await fetch(`${apiUrl}/api/drugs/${params.slug}/`, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
+    console.log(`📡 Fetching drug ${slug} from Oracle CMS`);
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return { notFound: true };
+    // Try multiple endpoints for drug detail
+    const endpoints = [
+      `${baseUrl}/api/drugs/${slug}/`,
+      `${baseUrl}/api/drugs/${slug}`,
+      `${baseUrl}/api/drugs/detail/${slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${slug}&type=drugs.DrugPage`,
+    ];
+
+    let drug = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.data) {
+          // Handle different response formats
+          if (response.data.items && response.data.items.length > 0) {
+            drug = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            drug = response.data.results[0];
+          } else {
+            drug = response.data;
+          }
+          
+          if (drug) {
+            console.log(`✅ Found drug at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
       }
-      console.warn(`Failed to fetch drug ${params.slug}: ${response.status}`);
-      return { 
-        props: { 
-          drug: null, 
-          error: `Failed to load drug (${response.status})` 
-        },
-        revalidate: 60
-      };
     }
 
-    const drug = await response.json();
-
     if (!drug) {
-      return { notFound: true };
+      console.warn(`Drug not found for slug: ${slug}`);
+      return { notFound: true, revalidate: 60 };
     }
 
     return {
