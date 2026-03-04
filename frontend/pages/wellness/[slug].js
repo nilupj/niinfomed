@@ -11,6 +11,25 @@ import ReferencesSection from "../../components/ReferencesSection";
 const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
+
+/* =========================================================
    ✅ IMAGE URL HELPER - UPDATED FOR ORACLE CMS
 ========================================================= */
 
@@ -1136,20 +1155,56 @@ export default function WellnessDetail({
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION WITH PERFORMANCE OPTIMIZATIONS
+   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
-    const { data } = await axios.get(`${CMS_API_URL}/api/wellness/topics/`, {
-      timeout: 10000,
-      params: { limit: 100 }
-    });
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
+    const endpoints = [
+      `${baseUrl}/api/wellness/topics/`,
+      `${baseUrl}/api/wellness/topics`,
+      `${baseUrl}/api/wellness/`,
+      `${baseUrl}/api/v2/pages/?type=wellness.WellnessPage&fields=slug`,
+    ];
 
-    const paths = (data || []).map((t) => ({
-      params: { slug: t.slug },
-    }));
+    console.log("🔍 Fetching wellness paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          params: { limit: 100 }
+        });
+        
+        const data = response.data;
+        
+        let topics = [];
+        if (Array.isArray(data)) {
+          topics = data;
+        } else if (data.results) {
+          topics = data.results;
+        } else if (data.items) {
+          topics = data.items;
+        }
+        
+        if (topics.length > 0) {
+          paths = topics
+            .filter(t => t?.slug)
+            .map((t) => ({
+              params: { slug: t.slug },
+            }));
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
 
+    console.log(`✅ Generated ${paths.length} wellness paths`);
     return {
       paths,
       fallback: "blocking",
@@ -1166,27 +1221,92 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params }) {
   try {
     const start = Date.now();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    const slug = params.slug;
     
-    const [topicRes, listRes] = await Promise.all([
-      axios.get(`${CMS_API_URL}/api/wellness/topics/${params.slug}`, {
-        timeout: 10000,
-        params: { lang: "en" }
-      }),
-      axios.get(`${CMS_API_URL}/api/wellness/topics/`, {
-        params: { limit: 6, lang: "en" },
-        timeout: 10000,
-      }),
-    ]);
+    console.log(`📡 Fetching wellness topic: ${slug} from Oracle CMS`);
 
-    const topic = topicRes.data || null;
-    const allTopics = listRes.data || [];
-    const relatedTopics = allTopics.filter((t) => t.slug !== params.slug);
+    // Try multiple endpoints for topic detail
+    const detailEndpoints = [
+      `${baseUrl}/api/wellness/topics/${slug}/`,
+      `${baseUrl}/api/wellness/topics/${slug}`,
+      `${baseUrl}/api/wellness/${slug}/`,
+      `${baseUrl}/api/wellness/${slug}`,
+      `${baseUrl}/api/wellness/detail/${slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${slug}&type=wellness.WellnessPage`,
+    ];
+
+    let topic = null;
+    
+    for (const endpoint of detailEndpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          params: { lang: "en" }
+        });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            topic = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            topic = response.data.results[0];
+          } else {
+            topic = response.data;
+          }
+          
+          if (topic) {
+            console.log(`✅ Found topic at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
 
     if (!topic) {
+      console.log(`❌ Wellness topic not found: ${slug}`);
       return {
         notFound: true,
         revalidate: 60,
       };
+    }
+
+    // Try multiple endpoints for related topics
+    let relatedTopics = [];
+    
+    const relatedEndpoints = [
+      `${baseUrl}/api/wellness/topics/`,
+      `${baseUrl}/api/wellness/topics`,
+      `${baseUrl}/api/wellness/`,
+      `${baseUrl}/api/v2/pages/?type=wellness.WellnessPage`,
+    ];
+    
+    for (const endpoint of relatedEndpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          params: { limit: 6, lang: "en" },
+          timeout: 10000,
+        });
+        
+        const data = response.data;
+        
+        let topics = [];
+        if (Array.isArray(data)) {
+          topics = data;
+        } else if (data.results) {
+          topics = data.results;
+        } else if (data.items) {
+          topics = data.items;
+        }
+        
+        if (topics.length > 0) {
+          relatedTopics = topics.filter((t) => t.slug !== slug);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Related endpoint failed: ${endpoint}`);
+      }
     }
 
     // Process content on server-side for better performance
@@ -1214,12 +1334,12 @@ export async function getStaticProps({ params }) {
     // Optimize main image URL
     const mainImageUrl = topic.image || null;
     
-    console.log(`✅ Generated wellness article ${params.slug} in ${Date.now() - start}ms`);
+    console.log(`✅ Generated wellness article ${slug} in ${Date.now() - start}ms`);
     
     return {
       props: {
         topic,
-        relatedTopics,
+        relatedTopics: relatedTopics.slice(0, 3),
         processedBody,
         processedReferences,
         processedBenefits,
