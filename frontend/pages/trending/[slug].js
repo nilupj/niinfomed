@@ -1,11 +1,30 @@
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import axios from 'axios';
 import { NextSeo } from 'next-seo';
-import Image from 'next/image';
 
 // Oracle CMS URL
 const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 // Helper to get proxied image URL
 const getProxiedImageUrl = (url) => {
@@ -68,19 +87,36 @@ export default function TrendingDetail() {
         setLoading(true);
         console.log(`📡 Fetching trending data for: ${slug} from Oracle CMS`);
         
-        const response = await fetch(`${CMS_API_URL}/api/trending/${slug}/`);
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError('This trending topic could not be found.');
-          } else {
-            setError(`Unable to load trending content (Error ${response.status}).`);
+        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+        
+        // Try multiple endpoints
+        const endpoints = [
+          `${baseUrl}/api/trending/${slug}/`,
+          `${baseUrl}/api/trending/${slug}`,
+          `${baseUrl}/api/trending/detail/${slug}/`,
+          `${baseUrl}/trending/${slug}/`,
+        ];
+        
+        let data = null;
+        
+        for (const endpoint of endpoints) {
+          try {
+            const response = await fetch(endpoint);
+            if (response.ok) {
+              data = await response.json();
+              console.log(`✅ Success from: ${endpoint}`);
+              break;
+            }
+          } catch (err) {
+            console.log(`❌ Failed: ${endpoint}`);
           }
+        }
+
+        if (!data) {
+          setError('This trending topic could not be found.');
           setLoading(false);
           return;
         }
-
-        const data = await response.json();
 
         // Check if API returned a redirect instruction
         if (data.redirect && data.content_type && data.content_slug) {
@@ -106,31 +142,99 @@ export default function TrendingDetail() {
       try {
         console.log('📡 Fetching tab content from Oracle CMS');
         
-        const [articlesRes, newsRes, conditionsRes, wellnessRes] = await Promise.all([
-          fetch(`${CMS_API_URL}/api/articles/latest/?limit=6&lang=en`),
-          fetch(`${CMS_API_URL}/api/news/latest/?limit=6&lang=en`),
-          fetch(`${CMS_API_URL}/api/conditions/latest/?limit=6&lang=en`),
-          fetch(`${CMS_API_URL}/api/wellness/topics/?limit=6&lang=en`)
-        ]);
+        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
         
-        const articlesData = await articlesRes.json();
-        const newsData = await newsRes.json();
-        const conditionsData = await conditionsRes.json();
-        const wellnessData = await wellnessRes.json();
+        // Articles endpoints
+        const articlesEndpoints = [
+          `${baseUrl}/api/articles/latest/?limit=6&lang=en`,
+          `${baseUrl}/api/articles/?limit=6&lang=en`,
+          `${baseUrl}/api/articles/top-stories?limit=6&lang=en`,
+        ];
         
-        // Handle different response formats
-        const processResponse = (data) => {
-          if (Array.isArray(data)) return data;
-          if (data.results) return data.results;
-          if (data.items) return data.items;
-          return [];
-        };
+        // News endpoints
+        const newsEndpoints = [
+          `${baseUrl}/api/news/latest/?limit=6&lang=en`,
+          `${baseUrl}/api/news/?limit=6&lang=en`,
+        ];
+        
+        // Conditions endpoints
+        const conditionsEndpoints = [
+          `${baseUrl}/api/conditions/latest/?limit=6&lang=en`,
+          `${baseUrl}/api/conditions/?limit=6&lang=en`,
+        ];
+        
+        // Wellness endpoints
+        const wellnessEndpoints = [
+          `${baseUrl}/api/wellness/topics/?limit=6&lang=en`,
+          `${baseUrl}/api/wellness/?limit=6&lang=en`,
+          `${baseUrl}/api/wellness/latest/?limit=6&lang=en`,
+        ];
+        
+        // Fetch articles
+        let articlesData = [];
+        for (const endpoint of articlesEndpoints) {
+          try {
+            const res = await fetch(endpoint);
+            if (res.ok) {
+              const data = await res.json();
+              articlesData = processResponse(data);
+              if (articlesData.length > 0) break;
+            }
+          } catch (e) {
+            console.log(`❌ Articles endpoint failed: ${endpoint}`);
+          }
+        }
+        
+        // Fetch news
+        let newsData = [];
+        for (const endpoint of newsEndpoints) {
+          try {
+            const res = await fetch(endpoint);
+            if (res.ok) {
+              const data = await res.json();
+              newsData = processResponse(data);
+              if (newsData.length > 0) break;
+            }
+          } catch (e) {
+            console.log(`❌ News endpoint failed: ${endpoint}`);
+          }
+        }
+        
+        // Fetch conditions
+        let conditionsData = [];
+        for (const endpoint of conditionsEndpoints) {
+          try {
+            const res = await fetch(endpoint);
+            if (res.ok) {
+              const data = await res.json();
+              conditionsData = processResponse(data);
+              if (conditionsData.length > 0) break;
+            }
+          } catch (e) {
+            console.log(`❌ Conditions endpoint failed: ${endpoint}`);
+          }
+        }
+        
+        // Fetch wellness
+        let wellnessData = [];
+        for (const endpoint of wellnessEndpoints) {
+          try {
+            const res = await fetch(endpoint);
+            if (res.ok) {
+              const data = await res.json();
+              wellnessData = processResponse(data);
+              if (wellnessData.length > 0) break;
+            }
+          } catch (e) {
+            console.log(`❌ Wellness endpoint failed: ${endpoint}`);
+          }
+        }
         
         setTabContent({
-          articles: processResponse(articlesData),
-          news: processResponse(newsData),
-          disease: processResponse(conditionsData),
-          lifestyle: processResponse(wellnessData)
+          articles: articlesData,
+          news: newsData,
+          disease: conditionsData,
+          lifestyle: wellnessData
         });
       } catch (err) {
         console.error('Error fetching tab content:', err);
@@ -139,6 +243,15 @@ export default function TrendingDetail() {
 
     fetchTabContent();
   }, []);
+
+  // Handle different response formats
+  const processResponse = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data?.results) return data.results;
+    if (data?.items) return data.items;
+    if (data?.data) return data.data;
+    return [];
+  };
 
   // Reset slide when tab changes
   useEffect(() => {
@@ -440,4 +553,124 @@ export default function TrendingDetail() {
       </div>
     </>
   );
+}
+
+/* =========================================================
+   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+========================================================= */
+
+export async function getStaticPaths() {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    
+    const endpoints = [
+      `${baseUrl}/api/trending/`,
+      `${baseUrl}/api/trending`,
+      `${baseUrl}/api/trending/list/`,
+    ];
+
+    console.log("🔍 Fetching trending paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        const data = response.data;
+        
+        let items = [];
+        if (Array.isArray(data)) {
+          items = data;
+        } else if (data.results) {
+          items = data.results;
+        } else if (data.items) {
+          items = data.items;
+        } else if (data.data) {
+          items = data.data;
+        }
+        
+        if (items.length > 0) {
+          paths = items
+            .filter(item => item?.slug && typeof item.slug === 'string')
+            .map((item) => ({
+              params: { slug: item.slug },
+            }));
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
+
+    console.log(`✅ Generated ${paths.length} static paths for trending`);
+    
+    return {
+      paths,
+      fallback: 'blocking',
+    };
+  } catch (error) {
+    console.error('Error fetching trending paths:', error);
+    return {
+      paths: [],
+      fallback: 'blocking',
+    };
+  }
+}
+
+export async function getStaticProps({ params }) {
+  if (!params?.slug) {
+    return { notFound: true };
+  }
+
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const slug = params.slug;
+    
+    console.log(`📡 Fetching trending detail for: ${slug} from Oracle CMS`);
+
+    // Try multiple endpoints for trending detail
+    const endpoints = [
+      `${baseUrl}/api/trending/${slug}/`,
+      `${baseUrl}/api/trending/${slug}`,
+      `${baseUrl}/api/trending/detail/${slug}/`,
+      `${baseUrl}/trending/${slug}/`,
+    ];
+
+    let trendingData = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.data) {
+          trendingData = response.data;
+          console.log(`✅ Found trending at: ${endpoint}`);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
+
+    if (!trendingData) {
+      console.warn(`Trending item not found for slug: ${slug}`);
+      return { notFound: true, revalidate: 60 };
+    }
+
+    return {
+      props: {
+        trendingData,
+      },
+      revalidate: 3600,
+    };
+  } catch (error) {
+    console.error(`Error fetching trending ${params.slug}:`, error);
+    return { notFound: true, revalidate: 60 };
+  }
 }
