@@ -8,6 +8,25 @@ import axios from 'axios';
 const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
 const DEFAULT_LANG = 'en';
 
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
+
 // Helper to get proxied image URL
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
@@ -40,36 +59,77 @@ export default function VideoPage({ video: initialVideo, relatedVideos: initialR
       try {
         setLoading(true);
 
-        // Fetch video details
-        const videoRes = await fetch(
-          `${CMS_API_URL}/api/videos/${slug}/?lang=${DEFAULT_LANG}`
-        );
+        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
         
-        if (!videoRes.ok) {
-          if (videoRes.status === 404) {
-            throw new Error('Video not found');
+        // Try multiple endpoints for video details
+        const videoEndpoints = [
+          `${baseUrl}/api/videos/${slug}/?lang=${DEFAULT_LANG}`,
+          `${baseUrl}/api/videos/${slug}?lang=${DEFAULT_LANG}`,
+          `${baseUrl}/api/videos/detail/${slug}/?lang=${DEFAULT_LANG}`,
+          `${baseUrl}/api/v2/pages/?slug=${slug}&type=videos.VideoPage&lang=${DEFAULT_LANG}`,
+        ];
+        
+        let videoData = null;
+        
+        for (const endpoint of videoEndpoints) {
+          try {
+            const response = await fetch(endpoint);
+            if (response.ok) {
+              const data = await response.json();
+              
+              // Handle different response formats
+              if (data.items && data.items.length > 0) {
+                videoData = data.items[0];
+              } else if (data.results && data.results.length > 0) {
+                videoData = data.results[0];
+              } else {
+                videoData = data;
+              }
+              
+              if (videoData) {
+                console.log(`✅ Found video at: ${endpoint}`);
+                break;
+              }
+            }
+          } catch (err) {
+            console.log(`❌ Video endpoint failed: ${endpoint}`);
           }
-          throw new Error(`Failed to fetch video: ${videoRes.status}`);
+        }
+
+        if (!videoData) {
+          throw new Error('Video not found');
         }
         
-        const videoData = await videoRes.json();
         setVideo(videoData);
 
-        // Fetch related videos (excluding current)
-        const relatedRes = await fetch(
-          `${CMS_API_URL}/api/videos/?limit=6&lang=${DEFAULT_LANG}`
-        );
+        // Try multiple endpoints for related videos
+        const relatedEndpoints = [
+          `${baseUrl}/api/videos/?limit=6&lang=${DEFAULT_LANG}`,
+          `${baseUrl}/api/videos?limit=6&lang=${DEFAULT_LANG}`,
+          `${baseUrl}/api/videos/latest/?limit=6&lang=${DEFAULT_LANG}`,
+        ];
         
-        const relatedData = await relatedRes.json();
-        
-        // Handle different response formats
         let relatedList = [];
-        if (Array.isArray(relatedData)) {
-          relatedList = relatedData;
-        } else if (relatedData.results) {
-          relatedList = relatedData.results;
-        } else if (relatedData.items) {
-          relatedList = relatedData.items;
+        
+        for (const endpoint of relatedEndpoints) {
+          try {
+            const response = await fetch(endpoint);
+            if (response.ok) {
+              const data = await response.json();
+              
+              if (Array.isArray(data)) {
+                relatedList = data;
+              } else if (data.results) {
+                relatedList = data.results;
+              } else if (data.items) {
+                relatedList = data.items;
+              }
+              
+              if (relatedList.length > 0) break;
+            }
+          } catch (err) {
+            console.log(`❌ Related endpoint failed: ${endpoint}`);
+          }
         }
 
         setRelatedVideos(relatedList.filter(v => v.slug !== slug).slice(0, 3));
@@ -328,35 +388,55 @@ export default function VideoPage({ video: initialVideo, relatedVideos: initialR
 }
 
 //
-// 🔥 STATIC GENERATION
+// 🔥 STATIC GENERATION WITH MULTIPLE ENDPOINTS
 //
 export async function getStaticPaths() {
   try {
-    console.log('🔍 Fetching video paths from:', `${CMS_API_URL}/api/videos/`);
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
     
-    // Fetch all videos to get slugs
-    const res = await axios.get(`${CMS_API_URL}/api/videos/`, {
-      params: { limit: 100, lang: DEFAULT_LANG },
-      timeout: 10000
-    });
+    const endpoints = [
+      `${baseUrl}/api/videos/`,
+      `${baseUrl}/api/videos`,
+      `${baseUrl}/api/videos/list/`,
+      `${baseUrl}/api/v2/pages/?type=videos.VideoPage&fields=slug`,
+    ];
 
-    // Handle different response formats
-    let videos = [];
-    if (Array.isArray(res.data)) {
-      videos = res.data;
-    } else if (res.data.results) {
-      videos = res.data.results;
-    } else if (res.data.items) {
-      videos = res.data.items;
+    console.log("🔍 Fetching video paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          params: { limit: 100, lang: DEFAULT_LANG },
+          timeout: 10000 
+        });
+        
+        const data = response.data;
+        
+        let videos = [];
+        if (Array.isArray(data)) {
+          videos = data;
+        } else if (data.results) {
+          videos = data.results;
+        } else if (data.items) {
+          videos = data.items;
+        }
+        
+        if (videos.length > 0) {
+          paths = videos
+            .filter(v => v?.slug && typeof v.slug === 'string')
+            .map(v => ({
+              params: { slug: v.slug },
+            }));
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
     }
 
-    const paths = videos
-      .filter(v => v.slug)
-      .map(v => ({
-        params: { slug: v.slug },
-      }));
-
-    console.log(`✅ Found ${paths.length} video paths`);
+    console.log(`✅ Generated ${paths.length} video paths`);
     return { paths, fallback: 'blocking' };
     
   } catch (error) {
@@ -366,44 +446,97 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }) {
+  if (!params?.slug) {
+    return { notFound: true };
+  }
+
   try {
-    console.log(`📡 Fetching video: ${params.slug} from Oracle CMS`);
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const slug = params.slug;
     
-    // Fetch video details
-    const videoRes = await axios.get(
-      `${CMS_API_URL}/api/videos/${params.slug}/`,
-      { 
-        params: { lang: DEFAULT_LANG },
-        timeout: 10000
-      }
-    );
+    console.log(`📡 Fetching video: ${slug} from Oracle CMS`);
 
-    // Fetch related videos
-    const relatedRes = await axios.get(
-      `${CMS_API_URL}/api/videos/`,
-      { 
-        params: { limit: 6, lang: DEFAULT_LANG },
-        timeout: 10000
-      }
-    );
+    // Try multiple endpoints for video details
+    const videoEndpoints = [
+      `${baseUrl}/api/videos/${slug}/`,
+      `${baseUrl}/api/videos/${slug}`,
+      `${baseUrl}/api/videos/detail/${slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${slug}&type=videos.VideoPage`,
+    ];
 
-    // Handle related videos response format
+    let video = null;
+    
+    for (const endpoint of videoEndpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          params: { lang: DEFAULT_LANG },
+          timeout: 10000 
+        });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            video = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            video = response.data.results[0];
+          } else {
+            video = response.data;
+          }
+          
+          if (video) {
+            console.log(`✅ Found video at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
+
+    if (!video) {
+      console.warn(`Video not found for slug: ${slug}`);
+      return { notFound: true, revalidate: 60 };
+    }
+
+    // Try multiple endpoints for related videos
+    const relatedEndpoints = [
+      `${baseUrl}/api/videos/`,
+      `${baseUrl}/api/videos`,
+      `${baseUrl}/api/videos/latest/`,
+      `${baseUrl}/api/v2/pages/?type=videos.VideoPage&limit=6`,
+    ];
+
     let relatedList = [];
-    if (Array.isArray(relatedRes.data)) {
-      relatedList = relatedRes.data;
-    } else if (relatedRes.data.results) {
-      relatedList = relatedRes.data.results;
-    } else if (relatedRes.data.items) {
-      relatedList = relatedRes.data.items;
+    
+    for (const endpoint of relatedEndpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          params: { limit: 6, lang: DEFAULT_LANG },
+          timeout: 10000 
+        });
+        
+        if (response.data) {
+          if (Array.isArray(response.data)) {
+            relatedList = response.data;
+          } else if (response.data.results) {
+            relatedList = response.data.results;
+          } else if (response.data.items) {
+            relatedList = response.data.items;
+          }
+          
+          if (relatedList.length > 0) break;
+        }
+      } catch (err) {
+        console.log(`❌ Related endpoint failed: ${endpoint}`);
+      }
     }
 
     const relatedVideos = relatedList
-      .filter(v => v.slug !== params.slug)
+      .filter(v => v.slug !== slug)
       .slice(0, 3);
 
     return {
       props: {
-        video: videoRes.data,
+        video,
         relatedVideos,
       },
       revalidate: 3600, // Revalidate every hour
