@@ -1,11 +1,30 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import axios from 'axios';
 import { NextSeo } from 'next-seo';
 import Layout from '../../components/Layout';
 
 // Oracle CMS URL
 const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ IMAGE HELPER FUNCTIONS
@@ -87,30 +106,52 @@ export default function TrendingIndex() {
     const fetchTrending = async () => {
       try {
         setLoading(true);
-        console.log('🔍 Fetching trending from:', `${CMS_API_URL}/api/trending/`);
+        console.log('🔍 Fetching trending from Oracle CMS');
         
-        const response = await fetch(`${CMS_API_URL}/api/trending/`, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('✅ Trending data:', data);
+        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
         
-        // Handle different response formats
+        // Try multiple endpoints
+        const endpoints = [
+          `${baseUrl}/api/trending/`,
+          `${baseUrl}/api/trending`,
+          `${baseUrl}/api/trending/list/`,
+          `${baseUrl}/trending/`,
+        ];
+        
         let items = [];
-        if (Array.isArray(data)) {
-          items = data;
-        } else if (data.results) {
-          items = data.results;
-        } else if (data.items) {
-          items = data.items;
+        
+        for (const endpoint of endpoints) {
+          try {
+            console.log(`🔄 Trying: ${endpoint}`);
+            const response = await fetch(endpoint, {
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              console.log(`✅ Success from: ${endpoint}`);
+              
+              // Handle different response formats
+              if (Array.isArray(data)) {
+                items = data;
+                break;
+              } else if (data.results) {
+                items = data.results;
+                break;
+              } else if (data.items) {
+                items = data.items;
+                break;
+              } else if (data.data) {
+                items = data.data;
+                break;
+              }
+            }
+          } catch (err) {
+            console.log(`❌ Failed: ${endpoint}`);
+          }
         }
         
         setTrendingItems(items);
@@ -485,4 +526,64 @@ export default function TrendingIndex() {
       </div>
     </Layout>
   );
+}
+
+/* =========================================================
+   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+========================================================= */
+export async function getStaticProps() {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    
+    const endpoints = [
+      `${baseUrl}/api/trending/`,
+      `${baseUrl}/api/trending`,
+      `${baseUrl}/api/trending/list/`,
+      `${baseUrl}/trending/`,
+    ];
+
+    console.log("🔍 Fetching trending data from Oracle CMS...");
+    
+    let trendingItems = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          trendingItems = data;
+          break;
+        } else if (data.results) {
+          trendingItems = data.results;
+          break;
+        } else if (data.items) {
+          trendingItems = data.items;
+          break;
+        } else if (data.data) {
+          trendingItems = data.data;
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
+
+    console.log(`✅ Found ${trendingItems.length} trending items`);
+    
+    return {
+      props: {
+        trendingItems,
+      },
+      revalidate: 3600, // Revalidate every hour
+    };
+  } catch (error) {
+    console.error('Error fetching trending data:', error);
+    return {
+      props: {
+        trendingItems: [],
+      },
+      revalidate: 60,
+    };
+  }
 }
