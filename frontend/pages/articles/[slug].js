@@ -3,11 +3,31 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { NextSeo } from 'next-seo';
 import { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import ArticleCard from '../../components/ArticleCard';
 import ShareButton from '../../components/ShareButton';
 import AuthorCard from '../../components/AuthorCard';
 import { fetchArticle, fetchArticlePaths, fetchRelatedArticles } from '../../utils/api';
 import ContentNav from '../../components/ContentNav';
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ UPDATED: Use environment variable for CMS URL
@@ -1142,48 +1162,155 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
   );
 }
 
+// Updated getStaticPaths with multiple endpoint attempts
 export async function getStaticPaths() {
   try {
-    const paths = await fetchArticlePaths();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
+    const endpoints = [
+      `${baseUrl}/api/articles/paths`,
+      `${baseUrl}/api/articles/paths/`,
+      `${baseUrl}/api/articles/`,
+    ];
 
+    console.log("🔍 Fetching article paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          // If it's an array of strings (slugs)
+          if (data.every(item => typeof item === 'string')) {
+            paths = data.map(slug => ({ params: { slug } }));
+            break;
+          }
+          // If it's an array of objects
+          paths = data.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        } else if (data.results) {
+          paths = data.results.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        } else if (data.items) {
+          paths = data.items.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
+
+    console.log(`✅ Generated ${paths.length} static paths for articles`);
+    
     return {
-      paths: paths.map(slug => ({ params: { slug } })),
-      fallback: true, // Show a loading state while generating pages on-demand
+      paths,
+      fallback: 'blocking',
     };
   } catch (error) {
     console.error('Error fetching article paths:', error);
     return {
       paths: [],
-      fallback: true,
+      fallback: 'blocking',
     };
   }
 }
 
+// Updated getStaticProps with multiple endpoint attempts
 export async function getStaticProps({ params, locale }) {
   try {
     console.log(`📡 Fetching article: ${params.slug} from Oracle CMS`);
-    const article = await fetchArticle(params.slug, locale);
+    
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
+    // Try multiple endpoints for article detail
+    const detailEndpoints = [
+      `${baseUrl}/api/articles/${params.slug}/`,
+      `${baseUrl}/api/articles/${params.slug}`,
+      `${baseUrl}/api/articles/detail/${params.slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${params.slug}&type=articles.ArticlePage`,
+    ];
 
-    if (!article) {
-      return {
-        notFound: true,
-      };
+    let article = null;
+    
+    for (const endpoint of detailEndpoints) {
+      try {
+        console.log(`🔄 Trying: ${endpoint}`);
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          params: { lang: locale || "en" }
+        });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            article = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            article = response.data.results[0];
+          } else {
+            article = response.data;
+          }
+          
+          if (article) {
+            console.log(`✅ Found article at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
     }
 
-    // Fetch related articles
-    const relatedArticles = await fetchRelatedArticles(params.slug);
+    if (!article) {
+      console.warn(`Article not found for slug: ${params.slug}`);
+      return { notFound: true, revalidate: 60 };
+    }
+
+    // Fetch related articles with multiple endpoints
+    let relatedArticles = [];
+    
+    try {
+      const relatedEndpoints = [
+        `${baseUrl}/api/articles/${params.slug}/related`,
+        `${baseUrl}/api/articles/${params.slug}/related/`,
+        `${baseUrl}/api/articles/related/${params.slug}/`,
+      ];
+      
+      for (const endpoint of relatedEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { 
+            timeout: 10000,
+            params: { limit: 3 }
+          });
+          
+          if (response.data) {
+            if (Array.isArray(response.data)) {
+              relatedArticles = response.data;
+            } else if (response.data.results) {
+              relatedArticles = response.data.results;
+            } else if (response.data.items) {
+              relatedArticles = response.data.items;
+            }
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Related endpoint failed: ${endpoint}`);
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch related articles');
+    }
 
     return {
       props: {
         article,
-        relatedArticles,
+        relatedArticles: relatedArticles || [],
       },
       revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
     console.error(`Error fetching article ${params.slug}:`, error);
-    return {
-      notFound: true,
-    };
+    return { notFound: true, revalidate: 60 };
   }
 }
