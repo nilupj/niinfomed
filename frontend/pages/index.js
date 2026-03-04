@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import axios from 'axios';
 import FeaturedArticle from '../components/FeaturedArticle';
 import ArticleCard from '../components/ArticleCard';
 import DiscoverImage from '../components/DiscoverImage';
@@ -15,8 +16,31 @@ import {
   fetchYogaTopics, 
   fetchVideos, 
   fetchSocialPosts, 
-  getImageUrl // Using the existing getImageUrl function
+  getImageUrl,
+  getProxiedImageUrl
 } from '../utils/api';
+
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ PERFORMANCE OPTIMIZATIONS
@@ -43,9 +67,9 @@ const fetchWithCache = async (key, fetchFn) => {
 const getOptimizedImageUrl = (url) => {
   if (!url) return null;
   
-  // If URL already has http/https, return as is
+  // If URL already has http/https, use getProxiedImageUrl
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+    return getProxiedImageUrl(url);
   }
   
   // If it's a relative path, use the existing getImageUrl function
@@ -708,26 +732,20 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Preload first few images for better LCP
-      const preloadImages = () => {
-        const imagesToPreload = [
-          ...(trendingContent.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
-          ...(conditions.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
-          ...(wellnessTopics.slice(0, 2).map(item => getOptimizedImageUrl(item.image)))
-        ].filter(Boolean);
+      const imagesToPreload = [
+        ...(trendingContent.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
+        ...(conditions.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
+        ...(wellnessTopics.slice(0, 2).map(item => getOptimizedImageUrl(item.image)))
+      ].filter(Boolean);
 
-        imagesToPreload.forEach(src => {
-          const link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'image';
-          link.href = src;
-          link.fetchPriority = 'high';
-          document.head.appendChild(link);
-        });
-      };
-
-      if (trendingContent.length > 0 || conditions.length > 0) {
-        preloadImages();
-      }
+      imagesToPreload.forEach(src => {
+        const link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.href = src;
+        link.fetchPriority = 'high';
+        document.head.appendChild(link);
+      });
     }
   }, [trendingContent, conditions, wellnessTopics]);
 
@@ -936,7 +954,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {/* Video Consultation */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/video-consult` : '/video-consult'}
+              href="https://niinfomed.com/video-consult"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -964,7 +982,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
             {/* Lab Tests */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/lab-tests` : '/lab-tests'}
+              href="https://niinfomed.com/lab-tests"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -992,7 +1010,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
             {/* Find Doctors */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/find-doctors` : '/find-doctors'}
+              href="https://niinfomed.com/find-doctors"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -1020,7 +1038,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
             {/* Find Clinics */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/find-clinics` : '/find-clinics'}
+              href="https://niinfomed.com/find-clinics"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -1048,7 +1066,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
             {/* Surgeries */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/surgeries` : '/surgeries'}
+              href="https://niinfomed.com/surgeries"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -1076,7 +1094,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
             {/* Medicines */}
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/medicines` : '/medicines'}
+              href="https://niinfomed.com/medicines"
               target="_blank"
               rel="noopener noreferrer"
               className="group"
@@ -1106,7 +1124,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
           {/* Call to Action */}
           <div className="text-center mt-12">
             <a
-              href={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000` : '/services'}
+              href="https://niinfomed.com/services"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 rounded-full font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
@@ -1177,7 +1195,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-neutral-900 mb-1">Latest News</h2>
-            <p className="text-sm text-neutral-600">Stay updated with health news</p>
           </div>
           <Link href="/news" className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
             View All
