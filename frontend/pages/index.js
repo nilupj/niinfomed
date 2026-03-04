@@ -94,7 +94,6 @@ const VideoSection = () => {
   useEffect(() => {
     const fetchVideoData = async () => {
       try {
-        // ✅ Use cached fetch
         const data = await fetchWithCache('videos', () => 
           fetchVideos(6)
         );
@@ -107,7 +106,6 @@ const VideoSection = () => {
       }
     };
     
-    // ✅ Defer non-critical loading
     setTimeout(fetchVideoData, 100);
   }, []);
 
@@ -204,7 +202,6 @@ const SocialMediaSection = () => {
   useEffect(() => {
     const fetchSocialData = async () => {
       try {
-        // ✅ Use cached fetch
         const data = await fetchWithCache('social_posts', () => 
           fetchSocialPosts(6)
         );
@@ -217,7 +214,6 @@ const SocialMediaSection = () => {
       }
     };
     
-    // ✅ Defer non-critical loading
     setTimeout(fetchSocialData, 100);
   }, []);
 
@@ -300,7 +296,6 @@ const HomeopathySection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        // ✅ Use cached fetch
         const data = await fetchWithCache('homeopathy_topics', () => 
           fetchHomeopathyTopics(6)
         );
@@ -313,7 +308,6 @@ const HomeopathySection = () => {
       }
     };
     
-    // ✅ Defer non-critical loading
     setTimeout(fetchTopics, 100);
   }, []);
 
@@ -390,7 +384,6 @@ const AyurvedaSection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        // ✅ Use cached fetch
         const data = await fetchWithCache('ayurveda_topics', () => 
           fetchAyurvedaTopics(6)
         );
@@ -403,7 +396,6 @@ const AyurvedaSection = () => {
       }
     };
     
-    // ✅ Defer non-critical loading
     setTimeout(fetchTopics, 100);
   }, []);
 
@@ -480,7 +472,6 @@ const YogaSection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        // ✅ Use cached fetch
         const data = await fetchWithCache('yoga_topics', () => 
           fetchYogaTopics(6)
         );
@@ -493,7 +484,6 @@ const YogaSection = () => {
       }
     };
     
-    // ✅ Defer non-critical loading
     setTimeout(fetchTopics, 100);
   }, []);
 
@@ -571,7 +561,10 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
   // ✅ Use memoized initial state
   const [topStories] = useState(initialTopStories || []);
   const [healthTopics] = useState(initialHealthTopics || []);
-  const [wellnessTopics] = useState(initialWellnessTopics || []);
+  
+  // ✅ Wellness topics with client-side fetch fallback
+  const [wellnessTopics, setWellnessTopics] = useState(initialWellnessTopics || []);
+  const [wellnessLoading, setWellnessLoading] = useState(!initialWellnessTopics?.length);
   
   // ✅ Lazy states for non-critical content
   const [news, setNews] = useState([]);
@@ -587,6 +580,57 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
   const [conditions, setConditions] = useState([]);
   const [topArticles, setTopArticles] = useState([]);
   const [latestNews, setLatestNews] = useState([]);
+
+  // ✅ Fetch wellness topics if not provided
+  useEffect(() => {
+    const fetchWellnessData = async () => {
+      if (initialWellnessTopics?.length > 0) return;
+      
+      try {
+        setWellnessLoading(true);
+        
+        // Try multiple endpoints
+        const endpoints = [
+          '/cms-api/wellness/topics/',
+          '/cms-api/wellness/topics',
+          '/cms-api/wellness/',
+          '/cms-api/wellness/latest/',
+        ];
+        
+        let topicsData = [];
+        
+        for (const endpoint of endpoints) {
+          try {
+            const res = await fetch(endpoint);
+            if (res.ok) {
+              const data = await res.json();
+              
+              if (Array.isArray(data)) {
+                topicsData = data;
+                break;
+              } else if (data.results) {
+                topicsData = data.results;
+                break;
+              } else if (data.items) {
+                topicsData = data.items;
+                break;
+              }
+            }
+          } catch (err) {
+            console.log(`❌ Wellness endpoint failed: ${endpoint}`);
+          }
+        }
+        
+        setWellnessTopics(topicsData);
+      } catch (error) {
+        console.error('Error fetching wellness topics:', error);
+      } finally {
+        setWellnessLoading(false);
+      }
+    };
+
+    fetchWellnessData();
+  }, [initialWellnessTopics]);
 
   // ✅ Slider state with useCallback
   const itemsPerSlide = 3;
@@ -629,7 +673,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
   useEffect(() => {
     const loadCriticalContent = async () => {
       try {
-        // Load only critical content initially
         const [articlesData, conditionsData] = await Promise.all([
           fetchWithCache('top_articles', () => fetchTopStories(6)),
           fetchWithCache('latest_conditions', () => fetchLatestConditions(6))
@@ -650,7 +693,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
     const loadDeferredContent = async () => {
       setIsLoading(true);
       try {
-        // Load non-critical content after critical content
         const [newsData, homeopathyData, ayurvedaData, yogaData, videosData, socialData] = await Promise.all([
           fetchWithCache('latest_news', () => fetchLatestNews(10)),
           fetchWithCache('homeopathy_topics', () => fetchHomeopathyTopics(6)),
@@ -674,13 +716,11 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
       }
     };
 
-    // Use requestIdleCallback for better performance
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
       requestIdleCallback(() => {
         loadDeferredContent();
       }, { timeout: 2000 });
     } else {
-      // Fallback for browsers without requestIdleCallback
       setTimeout(loadDeferredContent, 1000);
     }
   }, []);
@@ -722,27 +762,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
 
     fetchTrendingData();
   }, [trendingCategory]);
-
-  // ✅ Preload critical images
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Preload first few images for better LCP
-      const imagesToPreload = [
-        ...(trendingContent.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
-        ...(conditions.slice(0, 3).map(item => getOptimizedImageUrl(item.image))),
-        ...(wellnessTopics.slice(0, 2).map(item => getOptimizedImageUrl(item.image)))
-      ].filter(Boolean);
-
-      imagesToPreload.forEach(src => {
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'image';
-        link.href = src;
-        link.fetchPriority = 'high';
-        document.head.appendChild(link);
-      });
-    }
-  }, [trendingContent, conditions, wellnessTopics]);
 
   const healthCategories = useMemo(() => [
     { name: 'Heart Health', link: '/conditions/heart-disease', icon: 'heart' },
@@ -895,7 +914,19 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
             </Link>
           </div>
 
-          {filteredWellnessTopics && filteredWellnessTopics.length > 0 ? (
+          {wellnessLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse">
+                  <div className="h-48 bg-neutral-200"></div>
+                  <div className="p-5">
+                    <div className="h-4 bg-neutral-200 rounded mb-2"></div>
+                    <div className="h-3 bg-neutral-200 rounded"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredWellnessTopics && filteredWellnessTopics.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredWellnessTopics.slice(0, 6).map((topic) => (
                 <Link key={topic.id || topic.slug} href={`/wellness/${topic.slug}`} className="group">
@@ -926,12 +957,13 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 bg-white rounded-lg shadow-sm">
-              <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-100">
+              <svg className="mx-auto h-16 w-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} 
                   d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <p className="text-gray-500">No wellness topics available at the moment.</p>
+              <p className="text-gray-500 text-lg">No wellness topics available at the moment.</p>
+              <p className="text-gray-400 text-sm mt-2">Check back soon for new content.</p>
             </div>
           )}
         </section>
@@ -1303,15 +1335,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
                           Comprehensive information and latest updates
                         </p>
 
-                        <div className="flex items-center justify-center gap-4 text-xs text-gray-500 mb-4">
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            50+ Articles
-                          </span>
-                        </div>
-
                         <div className="flex items-center justify-center text-primary font-semibold text-sm group-hover:gap-2 transition-all duration-300">
                           <span>Explore Now</span>
                           <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1335,4 +1358,43 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                   </svg>
                 </button>
-           
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/* =========================================================
+   ✅ OPTIMIZED getStaticProps
+========================================================= */
+export async function getStaticProps() {
+  try {
+    const [topStories, healthTopics, wellnessTopics] = await Promise.allSettled([
+      fetchTopStories(12),
+      fetchHealthTopics(12),
+      fetchWellnessTopics(12)
+    ]);
+
+    return {
+      props: {
+        initialTopStories: topStories.status === 'fulfilled' ? topStories.value || [] : [],
+        healthTopics: healthTopics.status === 'fulfilled' ? healthTopics.value || [] : [],
+        wellnessTopics: wellnessTopics.status === 'fulfilled' ? wellnessTopics.value || [] : []
+      },
+      revalidate: 3600,
+    };
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return {
+      props: {
+        initialTopStories: [],
+        healthTopics: [],
+        wellnessTopics: []
+      },
+      revalidate: 60,
+    };
+  }
+}
