@@ -1,12 +1,32 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import axios from "axios";
 import { NextSeo } from "next-seo";
 import ShareButton from "../../components/ShareButton";
 import CookieConsent from "../../components/CookieConsent";
 import CommentSection from "../../components/CommentSection";
 import { fetchNewsBySlug, fetchRelatedNews } from "../../utils/api";
 import Head from "next/head";
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
 
 /* =========================================================
    ✅ FIXED: Use Oracle CMS URL instead of localhost
@@ -573,20 +593,72 @@ export default function NewsArticle({
   const fetchArticle = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${safeCMS}/api/news/${router.query.slug}/`);
-      if (!res.ok) throw new Error("Article not found");
-      const data = await res.json();
-      setPageArticle(data);
       
-      try {
-        const relatedRes = await fetch(`${safeCMS}/api/news/?limit=6`);
-        if (relatedRes.ok) {
-          const relatedData = await relatedRes.json();
-          const relatedList = Array.isArray(relatedData) ? relatedData : (relatedData.results || []);
-          setRelatedArticles(relatedList.filter(v => v.slug !== router.query.slug).slice(0, 3));
+      // Try multiple endpoints
+      const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+      const endpoints = [
+        `${baseUrl}/api/news/${router.query.slug}/`,
+        `${baseUrl}/api/news/${router.query.slug}`,
+        `${baseUrl}/api/news/detail/${router.query.slug}/`,
+        `${baseUrl}/api/v2/pages/?slug=${router.query.slug}&type=news.NewsPage`,
+      ];
+      
+      let articleData = null;
+      
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const data = await res.json();
+            
+            // Handle different response formats
+            if (data.items && data.items.length > 0) {
+              articleData = data.items[0];
+            } else if (data.results && data.results.length > 0) {
+              articleData = data.results[0];
+            } else {
+              articleData = data;
+            }
+            
+            if (articleData) {
+              console.log(`✅ Found article at: ${endpoint}`);
+              break;
+            }
+          }
+        } catch (err) {
+          console.log(`❌ Endpoint failed: ${endpoint}`);
         }
-      } catch (e) {
-        console.error("Failed to fetch related articles:", e);
+      }
+      
+      if (articleData) {
+        setPageArticle(articleData);
+        
+        // Fetch related articles
+        try {
+          const relatedEndpoints = [
+            `${baseUrl}/api/news/${router.query.slug}/related`,
+            `${baseUrl}/api/news/${router.query.slug}/related/`,
+            `${baseUrl}/api/news/related/${router.query.slug}/`,
+          ];
+          
+          for (const endpoint of relatedEndpoints) {
+            try {
+              const relatedRes = await fetch(endpoint);
+              if (relatedRes.ok) {
+                const relatedData = await relatedRes.json();
+                const relatedList = Array.isArray(relatedData) ? relatedData : (relatedData.results || []);
+                setRelatedArticles(relatedList.filter(v => v.slug !== router.query.slug).slice(0, 3));
+                break;
+              }
+            } catch (e) {
+              console.log(`❌ Related endpoint failed: ${endpoint}`);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch related articles:", e);
+        }
+      } else {
+        throw new Error("Article not found");
       }
     } catch (err) {
       console.error(err);
@@ -1131,18 +1203,47 @@ export default function NewsArticle({
 }
 
 /* =========================================================
-   STATIC GENERATION WITH PERFORMANCE OPTIMIZATIONS
+   STATIC GENERATION WITH MULTIPLE ENDPOINTS
 ========================================================= */
 export async function getStaticPaths() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-    console.log("🔍 Fetching news paths from:", `${apiUrl}/api/news/paths`);
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
+    const endpoints = [
+      `${baseUrl}/api/news/paths`,
+      `${baseUrl}/api/news/paths/`,
+      `${baseUrl}/api/news/`,
+    ];
 
-    const res = await fetch(`${apiUrl}/api/news/paths`);
-    if (!res.ok) throw new Error(`Failed to fetch paths: ${res.status}`);
-
-    const slugs = await res.json();
-    const paths = slugs.map((slug) => ({ params: { slug } }));
+    console.log("🔍 Fetching news paths from Oracle CMS...");
+    
+    let paths = [];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, { timeout: 10000 });
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          // If it's an array of strings (slugs)
+          if (data.every(item => typeof item === 'string')) {
+            paths = data.map(slug => ({ params: { slug } }));
+            break;
+          }
+          // If it's an array of objects
+          paths = data.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        } else if (data.results) {
+          paths = data.results.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        } else if (data.items) {
+          paths = data.items.map(item => ({ params: { slug: item.slug } })).filter(p => p.params.slug);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
 
     console.log(`✅ Found ${paths.length} news paths`);
     return { paths, fallback: "blocking" };
@@ -1155,14 +1256,86 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params, locale }) {
   try {
     const start = Date.now();
-    console.log(`📡 Fetching news article: ${params.slug} from Oracle CMS`);
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    const slug = params.slug;
     
-    const [article, relatedArticles] = await Promise.all([
-      fetchNewsBySlug(params.slug, locale),
-      fetchRelatedNews(params.slug).catch(() => [])
-    ]);
+    console.log(`📡 Fetching news article: ${slug} from Oracle CMS`);
     
-    if (!article) return { notFound: true };
+    // Try multiple endpoints for article detail
+    const detailEndpoints = [
+      `${baseUrl}/api/news/${slug}/`,
+      `${baseUrl}/api/news/${slug}`,
+      `${baseUrl}/api/news/detail/${slug}/`,
+      `${baseUrl}/api/v2/pages/?slug=${slug}&type=news.NewsPage`,
+    ];
+
+    let article = null;
+    
+    for (const endpoint of detailEndpoints) {
+      try {
+        const response = await axios.get(endpoint, { 
+          timeout: 10000,
+          params: { lang: locale || "en" }
+        });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            article = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            article = response.data.results[0];
+          } else {
+            article = response.data;
+          }
+          
+          if (article) {
+            console.log(`✅ Found article at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
+
+    if (!article) {
+      console.warn(`Article not found for slug: ${slug}`);
+      return { notFound: true, revalidate: 60 };
+    }
+
+    // Fetch related articles with multiple endpoints
+    let relatedArticles = [];
+    
+    try {
+      const relatedEndpoints = [
+        `${baseUrl}/api/news/${slug}/related`,
+        `${baseUrl}/api/news/${slug}/related/`,
+        `${baseUrl}/api/news/related/${slug}/`,
+      ];
+      
+      for (const endpoint of relatedEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { 
+            timeout: 10000,
+            params: { limit: 6 }
+          });
+          
+          if (response.data) {
+            if (Array.isArray(response.data)) {
+              relatedArticles = response.data;
+            } else if (response.data.results) {
+              relatedArticles = response.data.results;
+            } else if (response.data.items) {
+              relatedArticles = response.data.items;
+            }
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Related endpoint failed: ${endpoint}`);
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch related articles');
+    }
     
     const safeCMS = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     
@@ -1186,12 +1359,12 @@ export async function getStaticProps({ params, locale }) {
     
     const mainImageUrl = getProxiedImageUrl(article.image);
     
-    console.log(`✅ Generated news article ${params.slug} in ${Date.now() - start}ms`);
+    console.log(`✅ Generated news article ${slug} in ${Date.now() - start}ms`);
     
     return {
       props: { 
         article,
-        relatedArticles: relatedArticles || [],
+        relatedArticles: relatedArticles.filter(v => v.slug !== slug).slice(0, 3),
         processedBody,
         processedReferences,
         headings,
@@ -1201,6 +1374,6 @@ export async function getStaticProps({ params, locale }) {
     };
   } catch (error) {
     console.error(`Error fetching news article ${params.slug}:`, error);
-    return { notFound: true };
+    return { notFound: true, revalidate: 60 };
   }
 }
