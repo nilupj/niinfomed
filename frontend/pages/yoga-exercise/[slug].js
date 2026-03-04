@@ -7,27 +7,48 @@ import ReferencesSection from "../../components/ReferencesSection";
 import { useState, useEffect, useMemo } from "react";
 import Head from "next/head";
 
+// Oracle CMS URL
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+
+/* =========================================================
+   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
+========================================================= */
+const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
+  for (let url of endpoints) {
+    try {
+      console.log(`🔍 Trying endpoint: ${url}`);
+      const res = await axios.get(url, config);
+      if (res?.data) {
+        console.log(`✅ Success from: ${url}`);
+        return { data: res.data, usedUrl: url };
+      }
+    } catch (err) {
+      console.log(`❌ Failed: ${url}`);
+    }
+  }
+  return { data: null, usedUrl: null };
+};
+
 /* =========================================================
    ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
 ========================================================= */
 const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
 
-    base = base
-      .replace("0.0.0.0", frontendHost)
-      .replace("127.0.0.1", frontendHost)
-      .replace("localhost", frontendHost);
+    // Only replace if the base contains localhost/127.0.0.1
+    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
+      base = base
+        .replace("0.0.0.0", frontendHost)
+        .replace("127.0.0.1", frontendHost)
+        .replace("localhost", frontendHost);
+    }
   }
 
   return base;
 };
-
-// ⚠️ For SSR/SSG use env directly (build time)
-const CMS_API_URL =
-  process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
 
 /* =========================================================
    ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
@@ -36,6 +57,9 @@ const fixMediaUrlsInHtml = (html) => {
   if (!html) return "";
 
   return html
+    // Oracle CMS patterns
+    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
+    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
     .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
@@ -46,6 +70,8 @@ const fixMediaUrlsInHtml = (html) => {
     .replace(/src='\/media\//g, "src='/cms-media/")
     .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='\/media\//g, "srcset='/cms-media/")
+    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
+    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
     .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
     .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
@@ -61,7 +87,6 @@ const fixMediaUrlsInHtml = (html) => {
 const optimizeImageUrl = (url, width = 1200) => {
   if (!url) return null;
   
-  // If using a proper CDN/image service, add optimization params
   if (url.includes('unsplash.com') || url.includes('cloudinary') || url.includes('imgix')) {
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}w=${width}&q=75&auto=format,compress`;
@@ -75,6 +100,13 @@ const optimizeImageUrl = (url, width = 1200) => {
 ========================================================= */
 const getProxiedImageUrl = (url) => {
   if (!url) return null;
+
+  // Handle Oracle CMS URL
+  if (url.includes('161.118.167.107')) {
+    return url
+      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
+      .replace('/cms-media/media/', '/cms-media/');
+  }
 
   if (url.startsWith("http://0.0.0.0:8001")) {
     return url
@@ -181,7 +213,7 @@ const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
 };
 
 /* =========================================================
-   ✅ NEW: FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
+   ✅ FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
    Converts: <a linktype="page" id="75"> -> <a href="/yoga-exercise/slug">
 ========================================================= */
 const extractInternalPageLinkIds = (html = "") => {
@@ -201,6 +233,8 @@ const fetchWagtailPageById = async (id, safeBaseUrl) => {
 };
 
 const buildFrontendUrlFromWagtailPage = (pageData) => {
+  if (!pageData) return "#";
+  
   const type = (pageData?.meta?.type || "").toLowerCase();
   const slug = pageData?.meta?.slug || pageData?.slug;
 
@@ -225,30 +259,39 @@ const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
 
   let updated = html;
 
-  // 1) Fix internal page links
-  const ids = extractInternalPageLinkIds(updated);
+  try {
+    // 1) Fix internal page links
+    const ids = extractInternalPageLinkIds(updated);
 
-  for (const id of ids) {
-    const pageData = await fetchWagtailPageById(id, safeBaseUrl);
+    for (const id of ids) {
+      const pageData = await fetchWagtailPageById(id, safeBaseUrl);
+      const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
 
-    const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
+      updated = updated.replace(
+        new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
+        `<a$1$2href="${url}"$3>`
+      );
+    }
 
-    // Replace <a linktype="page" id="75" ...> with <a href="/yoga-exercise/slug" ...>
+    // 2) Fix document links
     updated = updated.replace(
-      new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-      `<a$1$2href="${url}"$3>`
+      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
+      `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
     );
+
+    // 3) Remove leftover wagtail attributes
+    updated = updated.replace(/linktype="[^"]*"/g, "");
+    updated = updated.replace(/\s?id="\d+"/g, "");
+
+    // 4) Make external links open in new tab
+    updated = updated.replace(
+      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
+      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
+    );
+
+  } catch (error) {
+    console.error("Error fixing internal links:", error);
   }
-
-  // 2) Fix document links
-  updated = updated.replace(
-    /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-    `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-  );
-
-  // 3) Remove leftover wagtail attributes
-  updated = updated.replace(/linktype="[^"]*"/g, "");
-  updated = updated.replace(/\s?id="\d+"/g, "");
 
   return updated;
 };
@@ -271,6 +314,7 @@ const extractHeadings = (html) => {
   return matches.map((m) => ({
     level: Number(m[1]),
     text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
+    id: slugify(m[2].replace(/<\/?[^>]+(>|$)/g, "").trim())
   }));
 };
 
@@ -279,11 +323,11 @@ const addHeadingIds = (html, headings) => {
 
   let updated = html;
   headings.forEach((h) => {
-    const id = slugify(h.text);
+    if (!h.id) return;
 
     updated = updated.replace(
       new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${id}">${h.text}</h${h.level}>`
+      `<h${h.level}$1 id="${h.id}">${h.text}</h${h.level}>`
     );
   });
 
@@ -891,20 +935,6 @@ const ContentMetadata = ({
 };
 
 /* =========================================================
-   API Helpers
-========================================================= */
-
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      const res = await axios.get(url, config);
-      if (res?.data) return { data: res.data, usedUrl: url };
-    } catch (err) {}
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 
@@ -1112,8 +1142,8 @@ export default function YogaDetail({
         
         {/* ✅ Preconnect to image domains */}
         <link rel="preconnect" href="https://images.unsplash.com" />
-        {mainImageUrl.includes('localhost') && (
-          <link rel="preconnect" href={new URL(mainImageUrl).origin} />
+        {mainImageUrl.includes('161.118.167.107') && (
+          <link rel="preconnect" href="http://161.118.167.107" />
         )}
       </Head>
 
@@ -1390,7 +1420,7 @@ export default function YogaDetail({
                           key={item.id || item.slug}
                           href={`/yoga-exercise/${item.slug}`}
                           className="block group"
-                          prefetch={false} // ✅ Don't prefetch related articles
+                          prefetch={false}
                         >
                           <div className="flex gap-3 items-start">
                             <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
@@ -1398,7 +1428,7 @@ export default function YogaDetail({
                                 src={relatedImage}
                                 alt={item.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                loading="lazy" // ✅ Lazy load related images
+                                loading="lazy"
                                 decoding="async"
                                 width={80}
                                 height={64}
@@ -1491,26 +1521,55 @@ export default function YogaDetail({
 
 export async function getStaticPaths() {
   try {
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    
     const listEndpoints = [
-      `${CMS_API_URL}/api/yoga/topics/`,
-      `${CMS_API_URL}/api/v1/yoga/topics/`,
-      `${CMS_API_URL}/api/v1/yoga/`,
-      `${CMS_API_URL}/yoga/topics/`,
+      `${baseUrl}/api/yoga/topics/`,
+      `${baseUrl}/api/yoga/topics`,
+      `${baseUrl}/api/v1/yoga/topics/`,
+      `${baseUrl}/api/v1/yoga/`,
+      `${baseUrl}/yoga/topics/`,
+      `${baseUrl}/api/v2/pages/?type=yoga.YogaTopicPage&fields=slug`,
     ];
 
-    const { data } = await tryFetchFromMultipleEndpoints(listEndpoints, {
-      timeout: 10000,
-      params: { limit: 100 },
-    });
+    console.log("🔍 Fetching yoga paths from Oracle CMS...");
+    
+    let topics = [];
+    
+    for (const endpoint of listEndpoints) {
+      try {
+        const response = await axios.get(endpoint, {
+          timeout: 10000,
+          params: { limit: 100 },
+        });
+        
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          topics = data;
+          break;
+        } else if (data.results) {
+          topics = data.results;
+          break;
+        } else if (data.items) {
+          topics = data.items;
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Endpoint failed: ${endpoint}`);
+      }
+    }
 
-    const topics = Array.isArray(data) ? data : data?.results || [];
+    const paths = topics
+      .filter(t => t?.slug)
+      .map((t) => ({
+        params: { slug: t.slug },
+      }));
 
-    const paths = topics.map((t) => ({
-      params: { slug: t.slug },
-    }));
-
+    console.log(`✅ Generated ${paths.length} yoga paths`);
     return { paths, fallback: "blocking" };
   } catch (error) {
+    console.error("Error fetching yoga paths:", error);
     return { paths: [], fallback: "blocking" };
   }
 }
@@ -1518,56 +1577,104 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params }) {
   try {
     const start = Date.now();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     const slug = params.slug;
 
+    console.log(`📡 Fetching yoga topic: ${slug} from Oracle CMS`);
+
+    // Try multiple endpoints for topic detail
     const detailEndpoints = [
-      `${CMS_API_URL}/api/yoga/topics/${slug}`,
-      `${CMS_API_URL}/api/yoga/topics/${slug}/`,
-      `${CMS_API_URL}/api/v1/yoga/topics/${slug}`,
-      `${CMS_API_URL}/api/v1/yoga/topics/${slug}/`,
-      `${CMS_API_URL}/yoga/topics/${slug}`,
-      `${CMS_API_URL}/yoga/topics/${slug}/`,
+      `${baseUrl}/api/yoga/topics/${slug}/`,
+      `${baseUrl}/api/yoga/topics/${slug}`,
+      `${baseUrl}/api/v1/yoga/topics/${slug}/`,
+      `${baseUrl}/api/v1/yoga/topics/${slug}`,
+      `${baseUrl}/yoga/topics/${slug}/`,
+      `${baseUrl}/yoga/topics/${slug}`,
+      `${baseUrl}/api/v2/pages/?slug=${slug}&type=yoga.YogaTopicPage`,
     ];
 
-    const listEndpoints = [
-      `${CMS_API_URL}/api/yoga/topics/`,
-      `${CMS_API_URL}/api/v1/yoga/topics/`,
-      `${CMS_API_URL}/yoga/topics/`,
-    ];
-
-    const [{ data: topic }, { data: listData }] = await Promise.all([
-      tryFetchFromMultipleEndpoints(detailEndpoints, {
-        timeout: 10000,
-        params: { lang: "en" },
-      }),
-      tryFetchFromMultipleEndpoints(listEndpoints, {
-        timeout: 10000,
-        params: { limit: 6, lang: "en" },
-      }),
-    ]);
-
-    const allTopics = Array.isArray(listData)
-      ? listData
-      : listData?.results || [];
-
-    const relatedTopics = allTopics.filter((t) => t.slug !== slug);
+    let topic = null;
+    
+    for (const endpoint of detailEndpoints) {
+      try {
+        const response = await axios.get(endpoint, {
+          timeout: 10000,
+          params: { lang: "en" },
+        });
+        
+        if (response.data) {
+          if (response.data.items && response.data.items.length > 0) {
+            topic = response.data.items[0];
+          } else if (response.data.results && response.data.results.length > 0) {
+            topic = response.data.results[0];
+          } else {
+            topic = response.data;
+          }
+          
+          if (topic) {
+            console.log(`✅ Found topic at: ${endpoint}`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Failed: ${endpoint}`);
+      }
+    }
 
     if (!topic) {
+      console.log(`❌ Yoga topic not found: ${slug}`);
       return { notFound: true, revalidate: 60 };
     }
+
+    // Try multiple endpoints for related topics
+    let allTopics = [];
+    
+    const listEndpoints = [
+      `${baseUrl}/api/yoga/topics/`,
+      `${baseUrl}/api/yoga/topics`,
+      `${baseUrl}/api/v1/yoga/topics/`,
+      `${baseUrl}/yoga/topics/`,
+      `${baseUrl}/api/v2/pages/?type=yoga.YogaTopicPage`,
+    ];
+    
+    for (const endpoint of listEndpoints) {
+      try {
+        const response = await axios.get(endpoint, {
+          timeout: 10000,
+          params: { limit: 6, lang: "en" },
+        });
+        
+        const data = response.data;
+        
+        if (Array.isArray(data)) {
+          allTopics = data;
+          break;
+        } else if (data.results) {
+          allTopics = data.results;
+          break;
+        } else if (data.items) {
+          allTopics = data.items;
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Related endpoint failed: ${endpoint}`);
+      }
+    }
+
+    const relatedTopics = allTopics.filter((t) => t.slug !== slug);
 
     const ids = extractEmbedImageIds(topic.body || "");
     const imageMap = {};
 
     await Promise.all(
       ids.map(async (id) => {
-        const url = await fetchWagtailImageUrl(id, CMS_API_URL);
+        const url = await fetchWagtailImageUrl(id, baseUrl);
         if (url) imageMap[id] = url;
       })
     );
 
     // Server-side URL for processing
-    const safeCMS = CMS_API_URL;
+    const safeCMS = baseUrl;
     
     // Pre-process HTML on server-side for better performance
     let processedBody = "";
@@ -1613,7 +1720,7 @@ export async function getStaticProps({ params }) {
     return {
       props: {
         topic,
-        relatedTopics,
+        relatedTopics: relatedTopics.slice(0, 3),
         imageMap,
         processedBody,
         processedReferences,
