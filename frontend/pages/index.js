@@ -2,9 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import axios from 'axios';
+import { NextSeo } from 'next-seo';
 import FeaturedArticle from '../components/FeaturedArticle';
 import ArticleCard from '../components/ArticleCard';
 import DiscoverImage from '../components/DiscoverImage';
+import ImageWithFallback from '../components/ImageWithFallback';
 import { 
   fetchTopStories, 
   fetchHealthTopics, 
@@ -63,17 +65,25 @@ const fetchWithCache = async (key, fetchFn) => {
   return data;
 };
 
-// ✅ Simple image optimization function
+// ✅ Image optimization function with fallback
 const getOptimizedImageUrl = (url) => {
   if (!url) return null;
   
-  // If URL already has http/https, use getProxiedImageUrl
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return getProxiedImageUrl(url);
+  try {
+    // Pehle proxy URL le lo
+    const proxiedUrl = getProxiedImageUrl(url);
+    
+    // Unsplash images ke liye optimization
+    if (proxiedUrl.includes('unsplash.com')) {
+      const separator = proxiedUrl.includes('?') ? '&' : '?';
+      return `${proxiedUrl}${separator}w=800&q=75&auto=format`;
+    }
+    
+    return proxiedUrl;
+  } catch (error) {
+    console.error('Error optimizing image URL:', error);
+    return url;
   }
-  
-  // If it's a relative path, use the existing getImageUrl function
-  return getImageUrl(url);
 };
 
 // ✅ Optimized Video Section Component
@@ -141,14 +151,11 @@ const VideoSection = () => {
             <Link key={video.id} href={`/videos/${video.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
-                  <Image
-                    src={getOptimizedImageUrl(video.thumbnail) || getOptimizedImageUrl(video.image) || 'https://images.unsplash.com/photo-1588286840104-8957b019727f?auto=format&fit=crop&w=800&h=500'}
+                  <ImageWithFallback
+                    src={video.thumbnail || video.image}
                     alt={video.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                    quality={75}
+                    className="w-full h-full object-cover"
+                    fallbackSrc="https://images.unsplash.com/photo-1588286840104-8957b019727f?auto=format&fit=crop&w=800&h=500"
                   />
                   <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center group-hover:bg-opacity-40 transition-all">
                     <div className="w-16 h-16 bg-white bg-opacity-90 rounded-full flex items-center justify-center transform group-hover:scale-110 transition-transform">
@@ -248,14 +255,11 @@ const SocialMediaSection = () => {
             <div key={post.id || index} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative aspect-square">
-                  <Image
-                    src={getOptimizedImageUrl(post.image) || 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=400&h=400'}
+                  <ImageWithFallback
+                    src={post.image}
                     alt={post.caption || 'Social media post'}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                    quality={75}
+                    className="w-full h-full object-cover"
+                    fallbackSrc="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=400&h=400"
                   />
                   {post.platform && (
                     <span className="absolute top-3 left-3 bg-pink-600 text-white text-xs font-medium px-3 py-1 rounded-full capitalize">
@@ -346,14 +350,11 @@ const HomeopathySection = () => {
             <Link key={topic.id} href={`/homeopathy/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
-                  <Image
-                    src={getOptimizedImageUrl(topic.image) || 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500'}
+                  <ImageWithFallback
+                    src={topic.image}
                     alt={topic.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                    quality={75}
+                    className="w-full h-full object-cover"
+                    fallbackSrc="https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500"
                   />
                   {topic.category && (
                     <span className="absolute top-3 left-3 bg-green-600 text-white text-xs font-medium px-3 py-1 rounded-full">
@@ -439,14 +440,11 @@ const AyurvedaSection = () => {
             <Link key={topic.id} href={`/ayurveda/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
-                  <Image
-                    src={getOptimizedImageUrl(topic.image) || 'https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=800&h=500'}
+                  <ImageWithFallback
+                    src={topic.image}
                     alt={topic.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                    quality={75}
+                    className="w-full h-full object-cover"
+                    fallbackSrc="https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=800&h=500"
                   />
                   {topic.category && (
                     <span className="absolute top-3 left-3 bg-amber-600 text-white text-xs font-medium px-3 py-1 rounded-full">
@@ -532,14 +530,11 @@ const YogaSection = () => {
             <Link key={topic.id} href={`/yoga-exercise/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
-                  <Image
-                    src={getOptimizedImageUrl(topic.image) || 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&h=500'}
+                  <ImageWithFallback
+                    src={topic.image}
                     alt={topic.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                    quality={75}
+                    className="w-full h-full object-cover"
+                    fallbackSrc="https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&h=500"
                   />
                   {topic.category && (
                     <span className="absolute top-3 left-3 bg-purple-600 text-white text-xs font-medium px-3 py-1 rounded-full">
@@ -749,24 +744,6 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
     }
   }, [trendingContent, conditions, wellnessTopics]);
 
-  const QuizCard = ({ quiz }) => (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <img 
-        className="w-full h-48 object-cover" 
-        src={getOptimizedImageUrl(quiz.image)} 
-        alt={quiz.title} 
-        loading="lazy"
-      />
-      <div className="p-4">
-        <h3 className="font-semibold text-lg mb-2">{quiz.title}</h3>
-        <p className="text-sm text-neutral-500">{quiz.description}</p>
-        <Link href={`/quiz/${quiz.slug}`} className="mt-4 inline-block text-primary hover:text-primary-dark font-medium text-sm transition-colors">
-          Take Quiz
-        </Link>
-      </div>
-    </div>
-  );
-
   const healthCategories = useMemo(() => [
     { name: 'Heart Health', link: '/conditions/heart-disease', icon: 'heart' },
     { name: 'Diabetes Care', link: '/conditions/diabetes', icon: 'activity' },
@@ -779,604 +756,583 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
   ], []);
 
   return (
-    <div className="container-custom py-8">
-      {/* TRENDING SECTION */}
-      <div className="mb-12">
-        <h2 className="section-title">TRENDING</h2>
+    <>
+      <NextSeo
+        title="Niinfomed - Trusted Health Information & Medical Resources"
+        description="Your trusted source for medical information, health conditions, symptoms, treatments, and wellness advice."
+        openGraph={{
+          title: 'Niinfomed - Trusted Health Information',
+          description: 'Your trusted source for medical information, health conditions, symptoms, treatments, and wellness advice.',
+          images: [
+            {
+              url: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&h=630',
+              width: 1200,
+              height: 630,
+              alt: 'Niinfomed',
+            },
+          ],
+        }}
+      />
 
-        {/* Category Tabs */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {[
-            { name: 'News', slug: 'news' },
-            { name: 'Disease', slug: 'disease' },
-            { name: 'Article', slug: 'article' },
-            { name: 'Lifestyle', slug: 'lifestyle' }
-          ].map((category) => (
-            <button
-              key={category.slug}
-              onClick={() => setTrendingCategory(category.slug)}
-              className={`px-6 py-2 rounded-full font-medium text-sm transition-colors ${category.slug === trendingCategory
-                ? 'bg-primary text-white'
-                : 'bg-white text-neutral-700 border border-neutral-200 hover:border-primary hover:text-primary'
+      <div className="container-custom py-8">
+        {/* TRENDING SECTION */}
+        <div className="mb-12">
+          <h2 className="section-title">TRENDING</h2>
+
+          {/* Category Tabs */}
+          <div className="flex flex-wrap gap-2 mb-8">
+            {[
+              { name: 'News', slug: 'news' },
+              { name: 'Disease', slug: 'disease' },
+              { name: 'Article', slug: 'article' },
+              { name: 'Lifestyle', slug: 'lifestyle' }
+            ].map((category) => (
+              <button
+                key={category.slug}
+                onClick={() => setTrendingCategory(category.slug)}
+                className={`px-6 py-2 rounded-full font-medium text-sm transition-colors ${
+                  category.slug === trendingCategory
+                    ? 'bg-primary text-white'
+                    : 'bg-white text-neutral-700 border border-neutral-200 hover:border-primary hover:text-primary'
                 }`}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
-
-        {trendingContent && trendingContent.length > 0 ? (
-          <div className="relative">
-            <div className="overflow-hidden">
-              <div
-                className="flex transition-transform duration-500 ease-in-out"
-                style={{ transform: `translateX(-${currentSlide * 100}%)` }}
               >
-                {Array.from({ length: totalSlides }).map((_, slideIndex) => (
-                  <div key={slideIndex} className="w-full flex-shrink-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {trendingContentForSlider.slice(slideIndex * itemsPerSlide, (slideIndex + 1) * itemsPerSlide).map((article) => (
-                        <ArticleCard 
-                          key={article.id || article.slug} 
-                          article={article} 
-                          variant="medical"
-                          imageUrl={getOptimizedImageUrl(article.image)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Navigation Arrows */}
-            {totalSlides > 1 && (
-              <>
-                <button
-                  onClick={prevSlide}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white hover:bg-primary text-neutral-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={currentSlide === 0}
-                  aria-label="Previous slide"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <button
-                  onClick={nextSlide}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white hover:bg-primary text-neutral-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={currentSlide === totalSlides - 1}
-                  aria-label="Next slide"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </>
-            )}
-
-            {/* Dot Indicators */}
-            {totalSlides > 1 && (
-              <div className="flex justify-center items-center gap-2 mt-6">
-                {Array.from({ length: totalSlides }).map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => goToSlide(index)}
-                    className={`h-2 rounded-full transition-all duration-300 ${currentSlide === index
-                      ? 'bg-primary w-8'
-                      : 'bg-neutral-300 w-2 hover:bg-neutral-400'
-                      }`}
-                    aria-label={`Go to slide ${index + 1}`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="py-20 text-center">
-            <div className="animate-pulse">
-              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-neutral-200"></div>
-              <div className="mx-auto w-48 h-4 mb-4 rounded bg-neutral-200"></div>
-              <div className="mx-auto w-36 h-3 rounded bg-neutral-200"></div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Health & Wellness Topics */}
-      <section className="mb-12">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-900 mb-1">Health & Wellness Topics</h2>
-            <p className="text-sm text-neutral-600">Stay updated with wellness topics</p>
-          </div>
-          <Link href="/wellness" className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
-            View All
-            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-
-        {filteredWellnessTopics && filteredWellnessTopics.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredWellnessTopics.slice(0, 6).map((topic) => (
-              <Link key={topic.id || topic.slug} href={`/wellness/${topic.slug}`} className="group">
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="relative h-48">
-                    <Image
-                      src={getOptimizedImageUrl(topic.image) || 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500'}
-                      alt={topic.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      className="object-cover"
-                      loading="lazy"
-                      quality={75}
-                    />
-                    {topic.category && (
-                      <span className="absolute top-3 left-3 bg-primary text-white text-xs font-medium px-3 py-1 rounded-full">
-                        {topic.category.name}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-5">
-                    <h3 className="font-bold text-lg mb-2 text-neutral-800 line-clamp-2 group-hover:text-primary transition-colors">
-                      {topic.title}
-                    </h3>
-                    <p className="text-sm text-neutral-600 line-clamp-3">
-                      {topic.summary || 'Learn more about this wellness topic and how it can improve your well-being.'}
-                    </p>
-                  </div>
-                </div>
-              </Link>
+                {category.name}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-8">
-            <p className="text-neutral-600">No wellness topics available at the moment.</p>
-          </div>
-        )}
-      </section>
 
-      {/* Medical Services Section */}
-      <section className="py-16 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-
-        <div className="container-custom relative z-10">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">Our Medical Services</h2>
-            <p className="text-blue-100 text-lg max-w-2xl mx-auto">
-              Access comprehensive healthcare services from the comfort of your home
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {/* Video Consultation */}
-            <a
-              href="https://niinfomed.com/video-consult"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-blue-200 transition-colors">
-                  Video Consultation
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Connect with verified doctors through secure video calls. Get instant medical advice 24/7.
-                </p>
-                <div className="flex items-center text-blue-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Book Now</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+          {trendingContent && trendingContent.length > 0 ? (
+            <div className="relative">
+              <div className="overflow-hidden">
+                <div
+                  className="flex transition-transform duration-500 ease-in-out"
+                  style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+                >
+                  {Array.from({ length: totalSlides }).map((_, slideIndex) => (
+                    <div key={slideIndex} className="w-full flex-shrink-0">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {trendingContentForSlider.slice(slideIndex * itemsPerSlide, (slideIndex + 1) * itemsPerSlide).map((article) => (
+                          <ArticleCard 
+                            key={article.id || article.slug} 
+                            article={article} 
+                            variant="medical"
+                            imageUrl={getOptimizedImageUrl(article.image)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </a>
 
-            {/* Lab Tests */}
-            <a
-              href="https://niinfomed.com/lab-tests"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-green-200 transition-colors">
-                  Lab Tests at Home
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Book diagnostic tests with home sample collection. Get reports online within 24-48 hours.
-                </p>
-                <div className="flex items-center text-green-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Book Test</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </a>
+              {/* Navigation Arrows */}
+              {totalSlides > 1 && (
+                <>
+                  <button
+                    onClick={prevSlide}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white hover:bg-primary text-neutral-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={currentSlide === 0}
+                    aria-label="Previous slide"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white hover:bg-primary text-neutral-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={currentSlide === totalSlides - 1}
+                    aria-label="Next slide"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </>
+              )}
 
-            {/* Find Doctors */}
-            <a
-              href="https://niinfomed.com/find-doctors"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+              {/* Dot Indicators */}
+              {totalSlides > 1 && (
+                <div className="flex justify-center items-center gap-2 mt-6">
+                  {Array.from({ length: totalSlides }).map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => goToSlide(index)}
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        currentSlide === index
+                          ? 'bg-primary w-8'
+                          : 'bg-neutral-300 w-2 hover:bg-neutral-400'
+                      }`}
+                      aria-label={`Go to slide ${index + 1}`}
+                    />
+                  ))}
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-purple-200 transition-colors">
-                  Find Doctors
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Search and book appointments with specialist doctors near you. Read reviews and compare.
-                </p>
-                <div className="flex items-center text-purple-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Find Doctors</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </a>
-
-            {/* Find Clinics */}
-            <a
-              href="https://niinfomed.com/find-clinics"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-orange-200 transition-colors">
-                  Find Clinics
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Locate verified clinics and hospitals in your area. Check facilities and book appointments.
-                </p>
-                <div className="flex items-center text-orange-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Find Clinics</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </a>
-
-            {/* Surgeries */}
-            <a
-              href="https://niinfomed.com/surgeries"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-red-400 to-red-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-red-200 transition-colors">
-                  Medical Procedures
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Expert surgeons, safe facilities, and insurance support for various medical procedures.
-                </p>
-                <div className="flex items-center text-red-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Explore Options</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </a>
-
-            {/* Medicines */}
-            <a
-              href="https://niinfomed.com/medicines"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group"
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
-                <div className="w-20 h-20 bg-gradient-to-br from-teal-400 to-teal-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-teal-200 transition-colors">
-                  Order Medicines
-                </h3>
-                <p className="text-blue-100 mb-4 leading-relaxed">
-                  Order prescription medicines online and get them delivered to your doorstep.
-                </p>
-                <div className="flex items-center text-teal-200 font-semibold group-hover:gap-2 transition-all">
-                  <span>Order Now</span>
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </a>
-          </div>
-
-          {/* Call to Action */}
-          <div className="text-center mt-12">
-            <a
-              href="https://niinfomed.com/services"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 rounded-full font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
-            >
-              <span>View All Services</span>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Health Conditions Section */}
-      {conditions && conditions.length > 0 && (
-        <section className="py-12 bg-blue-50">
-          <div className="container-custom">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-bold text-neutral-900 mb-2">Health Conditions</h2>
-                <p className="text-neutral-600">Learn about various health conditions</p>
-              </div>
-              <Link href="/conditions" className="text-primary hover:text-primary-dark font-medium flex items-center gap-2">
-                View All
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
+              )}
             </div>
-            <div className={`grid gap-6 ${conditions.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : conditions.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-              {conditions.slice(0, Math.min(6, Math.max(1, conditions.length))).map((condition) => (
-                <FeaturedArticle
-                  key={condition.id}
-                  article={{
-                    id: condition.id,
-                    title: condition.title,
-                    slug: condition.slug,
-                    summary: condition.summary || condition.subtitle || 'Learn more about this health condition',
-                    image: getOptimizedImageUrl(condition.image),
-                    category: condition.category || { name: 'Conditions', slug: 'conditions' },
-                    published_date: condition.published_date,
-                  }}
-                  href={`/conditions/${condition.slug}`}
-                />
+          ) : (
+            <div className="py-20 text-center">
+              <div className="animate-pulse">
+                <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-neutral-200"></div>
+                <div className="mx-auto w-48 h-4 mb-4 rounded bg-neutral-200"></div>
+                <div className="mx-auto w-36 h-3 rounded bg-neutral-200"></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Health & Wellness Topics */}
+        <section className="mb-12">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-neutral-900 mb-1">Health & Wellness Topics</h2>
+              <p className="text-sm text-neutral-600">Stay updated with wellness topics</p>
+            </div>
+            <Link href="/wellness" className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
+              View All
+              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+
+          {filteredWellnessTopics && filteredWellnessTopics.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredWellnessTopics.slice(0, 6).map((topic) => (
+                <Link key={topic.id || topic.slug} href={`/wellness/${topic.slug}`} className="group">
+                  <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                    <div className="relative h-48 bg-gray-100">
+                      <ImageWithFallback
+                        src={topic.image}
+                        alt={topic.title}
+                        className="w-full h-full object-cover"
+                        fallbackSrc="https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500"
+                      />
+                      {topic.category && (
+                        <span className="absolute top-3 left-3 bg-primary text-white text-xs px-2 py-1 rounded-full">
+                          {topic.category.name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-lg mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+                        {topic.title}
+                      </h3>
+                      <p className="text-gray-600 text-sm line-clamp-3">
+                        {topic.summary || topic.introduction || 'Learn more about this wellness topic'}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
               ))}
             </div>
-          </div>
+          ) : (
+            <div className="text-center py-8 bg-white rounded-lg shadow-sm">
+              <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-gray-500">No wellness topics available at the moment.</p>
+            </div>
+          )}
         </section>
-      )}
 
-      {/* Homeopathic Remedies Section */}
-      <HomeopathySection />
+        {/* Medical Services Section */}
+        <section className="py-16 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden rounded-2xl">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
 
-      {/* Ayurvedic Wisdom Section */}
-      <AyurvedaSection />
+          <div className="container-custom relative z-10">
+            <div className="text-center mb-12">
+              <h2 className="text-4xl font-bold text-white mb-4">Our Medical Services</h2>
+              <p className="text-blue-100 text-lg max-w-2xl mx-auto">
+                Access comprehensive healthcare services from the comfort of your home
+              </p>
+            </div>
 
-      {/* Yoga & Exercise Section */}
-      <YogaSection />
-
-      {/* Health Videos Section */}
-      <VideoSection />
-
-      {/* From Our Community Section */}
-      <SocialMediaSection />
-
-      {/* Latest News Section */}
-      <section className="mb-12">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-neutral-900 mb-1">Latest News</h2>
-          </div>
-          <Link href="/news" className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
-            View All
-            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse">
-                <div className="h-48 bg-neutral-200"></div>
-                <div className="p-5">
-                  <div className="h-4 bg-neutral-200 rounded mb-2"></div>
-                  <div className="h-3 bg-neutral-200 rounded"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : news && news.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {news.slice(0, 6).map((article) => (
-              <Link key={article.id} href={`/news/${article.slug}`} className="group">
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="relative h-48">
-                    <Image
-                      src={getOptimizedImageUrl(article.image) || 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500'}
-                      alt={article.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      className="object-cover"
-                      loading="lazy"
-                      quality={75}
-                    />
-                    {article.category && (
-                      <span className="absolute top-3 left-3 bg-blue-600 text-white text-xs font-medium px-3 py-1 rounded-full">
-                        {article.category.name}
-                      </span>
-                    )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+              {/* Video Consultation */}
+              <a
+                href="https://niinfomed.com/video-consult"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
                   </div>
-                  <div className="p-5">
-                    <h3 className="font-bold text-lg mb-2 text-neutral-800 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                      {article.title}
-                    </h3>
-                    <p className="text-sm text-neutral-600 line-clamp-3 mb-3">
-                      {article.summary || article.subtitle || 'Read more about this health news story.'}
-                    </p>
-                    {article.publish_date && (
-                      <p className="text-xs text-neutral-500">
-                        {new Date(article.publish_date).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </p>
-                    )}
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-blue-200 transition-colors">
+                    Video Consultation
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Connect with verified doctors through secure video calls. Get instant medical advice 24/7.
+                  </p>
+                  <div className="flex items-center text-blue-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Book Now</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                   </div>
                 </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <p className="text-neutral-600">No news articles available at the moment.</p>
-          </div>
-        )}
-      </section>
+              </a>
 
-      {/* Enhanced Health Categories Section */}
-      <section className="py-20 bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }}></div>
-
-        <div className="container-custom relative z-10">
-          <div className="text-center mb-16">
-            <span className="inline-block px-4 py-2 bg-blue-100 text-blue-600 rounded-full text-sm font-semibold mb-4">
-              Browse by Category
-            </span>
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-              Explore Health Categories
-            </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Discover comprehensive health information across various medical specialties
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {healthCategories.map((category, index) => (
-              <Link key={index} href={category.link}>
-                <div
-                  className="group relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden transform hover:-translate-y-2"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-                  <div className="relative p-6">
-                    <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
-                      <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-
-                    <div className="text-center">
-                      <h3 className="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors duration-300 mb-2">
-                        {category.name}
-                      </h3>
-
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-2">
-                        Comprehensive information and latest updates
-                      </p>
-
-                      <div className="flex items-center justify-center gap-4 text-xs text-gray-500 mb-4">
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          50+ Articles
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-center text-primary font-semibold text-sm group-hover:gap-2 transition-all duration-300">
-                        <span>Explore Now</span>
-                        <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
-                      </div>
-                    </div>
+              {/* Lab Tests */}
+              <a
+                href="https://niinfomed.com/lab-tests"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
                   </div>
-
-                  <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 group-hover:w-full transition-all duration-500"></div>
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-green-200 transition-colors">
+                    Lab Tests at Home
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Book diagnostic tests with home sample collection. Get reports online within 24-48 hours.
+                  </p>
+                  <div className="flex items-center text-green-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Book Test</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                 </div>
-              </Link>
-            ))}
-          </div>
+              </a>
 
-          <div className="text-center mt-12">
-            <Link href="/conditions">
-              <button className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
-                <span>View All Health Topics</span>
+              {/* Find Doctors */}
+              <a
+                href="https://niinfomed.com/find-doctors"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-purple-200 transition-colors">
+                    Find Doctors
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Search and book appointments with specialist doctors near you. Read reviews and compare.
+                  </p>
+                  <div className="flex items-center text-purple-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Find Doctors</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </a>
+
+              {/* Find Clinics */}
+              <a
+                href="https://niinfomed.com/find-clinics"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-orange-200 transition-colors">
+                    Find Clinics
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Locate verified clinics and hospitals in your area. Check facilities and book appointments.
+                  </p>
+                  <div className="flex items-center text-orange-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Find Clinics</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </a>
+
+              {/* Surgeries */}
+              <a
+                href="https://niinfomed.com/surgeries"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-red-400 to-red-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-red-200 transition-colors">
+                    Medical Procedures
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Expert surgeons, safe facilities, and insurance support for various medical procedures.
+                  </p>
+                  <div className="flex items-center text-red-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Explore Options</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </a>
+
+              {/* Medicines */}
+              <a
+                href="https://niinfomed.com/medicines"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 hover:shadow-2xl">
+                  <div className="w-20 h-20 bg-gradient-to-br from-teal-400 to-teal-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-teal-200 transition-colors">
+                    Order Medicines
+                  </h3>
+                  <p className="text-blue-100 mb-4 leading-relaxed">
+                    Order prescription medicines online and get them delivered to your doorstep.
+                  </p>
+                  <div className="flex items-center text-teal-200 font-semibold group-hover:gap-2 transition-all">
+                    <span>Order Now</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </a>
+            </div>
+
+            {/* Call to Action */}
+            <div className="text-center mt-12">
+              <a
+                href="https://niinfomed.com/services"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 rounded-full font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+              >
+                <span>View All Services</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
-              </button>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* Health Conditions Section */}
+        {conditions && conditions.length > 0 && (
+          <section className="py-12 bg-blue-50 rounded-2xl mt-12">
+            <div className="container-custom">
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-3xl font-bold text-neutral-900 mb-2">Health Conditions</h2>
+                  <p className="text-neutral-600">Learn about various health conditions</p>
+                </div>
+                <Link href="/conditions" className="text-primary hover:text-primary-dark font-medium flex items-center gap-2">
+                  View All
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
+              <div className={`grid gap-6 ${conditions.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : conditions.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                {conditions.slice(0, Math.min(6, Math.max(1, conditions.length))).map((condition) => (
+                  <FeaturedArticle
+                    key={condition.id}
+                    article={{
+                      id: condition.id,
+                      title: condition.title,
+                      slug: condition.slug,
+                      summary: condition.summary || condition.subtitle || 'Learn more about this health condition',
+                      image: getOptimizedImageUrl(condition.image),
+                      category: condition.category || { name: 'Conditions', slug: 'conditions' },
+                      published_date: condition.published_date,
+                    }}
+                    href={`/conditions/${condition.slug}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Homeopathic Remedies Section */}
+        <HomeopathySection />
+
+        {/* Ayurvedic Wisdom Section */}
+        <AyurvedaSection />
+
+        {/* Yoga & Exercise Section */}
+        <YogaSection />
+
+        {/* Health Videos Section */}
+        <VideoSection />
+
+        {/* From Our Community Section */}
+        <SocialMediaSection />
+
+        {/* Latest News Section */}
+        <section className="mb-12">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-neutral-900 mb-1">Latest News</h2>
+            </div>
+            <Link href="/news" className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
+              View All
+              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </Link>
           </div>
-        </div>
-      </section>
-    </div>
-  );
-}
 
-/* =========================================================
-   ✅ OPTIMIZED getStaticProps
-========================================================= */
-export async function getStaticProps() {
-  try {
-    // ✅ Parallel fetching for better performance
-    const [topStories, healthTopics, wellnessTopics] = await Promise.allSettled([
-      fetchTopStories(12),
-      fetchHealthTopics(12),
-      fetchWellnessTopics(12)
-    ]);
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse">
+                  <div className="h-48 bg-neutral-200"></div>
+                  <div className="p-5">
+                    <div className="h-4 bg-neutral-200 rounded mb-2"></div>
+                    <div className="h-3 bg-neutral-200 rounded"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : news && news.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {news.slice(0, 6).map((article) => (
+                <Link key={article.id} href={`/news/${article.slug}`} className="group">
+                  <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                    <div className="relative h-48">
+                      <ImageWithFallback
+                        src={article.image}
+                        alt={article.title}
+                        className="w-full h-full object-cover"
+                        fallbackSrc="https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500"
+                      />
+                      {article.category && (
+                        <span className="absolute top-3 left-3 bg-blue-600 text-white text-xs font-medium px-3 py-1 rounded-full">
+                          {article.category.name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-5">
+                      <h3 className="font-bold text-lg mb-2 text-neutral-800 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {article.title}
+                      </h3>
+                      <p className="text-sm text-neutral-600 line-clamp-3 mb-3">
+                        {article.summary || article.subtitle || 'Read more about this health news story.'}
+                      </p>
+                      {article.publish_date && (
+                        <p className="text-xs text-neutral-500">
+                          {new Date(article.publish_date).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-neutral-600">No news articles available at the moment.</p>
+            </div>
+          )}
+        </section>
 
-    return {
-      props: {
-        initialTopStories: topStories.status === 'fulfilled' ? topStories.value || [] : [],
-        healthTopics: healthTopics.status === 'fulfilled' ? healthTopics.value || [] : [],
-        wellnessTopics: wellnessTopics.status === 'fulfilled' ? wellnessTopics.value || [] : []
-      },
-      revalidate: 3600, // Revalidate every hour
-    };
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    return {
-      props: {
-        initialTopStories: [],
-        healthTopics: [],
-        wellnessTopics: []
-      },
-      revalidate: 60, // Retry after 1 minute on error
-    };
-  }
-}
+        {/* Enhanced Health Categories Section */}
+        <section className="py-20 bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative overflow-hidden rounded-2xl">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }}></div>
+
+          <div className="container-custom relative z-10">
+            <div className="text-center mb-16">
+              <span className="inline-block px-4 py-2 bg-blue-100 text-blue-600 rounded-full text-sm font-semibold mb-4">
+                Browse by Category
+              </span>
+              <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+                Explore Health Categories
+              </h2>
+              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                Discover comprehensive health information across various medical specialties
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {healthCategories.map((category, index) => (
+                <Link key={index} href={category.link}>
+                  <div
+                    className="group relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer overflow-hidden transform hover:-translate-y-2"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+                    <div className="relative p-6">
+                      <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
+                        <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+
+                      <div className="text-center">
+                        <h3 className="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors duration-300 mb-2">
+                          {category.name}
+                        </h3>
+
+                        <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                          Comprehensive information and latest updates
+                        </p>
+
+                        <div className="flex items-center justify-center gap-4 text-xs text-gray-500 mb-4">
+                          <span className="flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            50+ Articles
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-center text-primary font-semibold text-sm group-hover:gap-2 transition-all duration-300">
+                          <span>Explore Now</span>
+                          <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 group-hover:w-full transition-all duration-500"></div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            <div className="text-center mt-12">
+              <Link href="/conditions">
+                <button className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
+                  <span>View All Health Topics</span>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </button>
+           
