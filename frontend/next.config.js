@@ -7,19 +7,21 @@ const nextConfig = {
   images: {
     unoptimized: true,
     remotePatterns: [
+      // ✅ Domain first (production)
       {
-        protocol: "http",
-        hostname: "161.118.167.107",
+        protocol: "https",
+        hostname: "api.niinfomed.com",
         pathname: "/media/**",
-      },
-      {
-        protocol: "http",
-        hostname: "161.118.167.107",
-        pathname: "/api/**",
       },
       {
         protocol: "https",
         hostname: "api.niinfomed.com",
+        pathname: "/api/**",
+      },
+      // ✅ Keep IP as fallback for development
+      {
+        protocol: "http",
+        hostname: "161.118.167.107",
         pathname: "/media/**",
       },
       {
@@ -35,12 +37,6 @@ const nextConfig = {
       },
       {
         protocol: "http",
-        hostname: "192.168.31.238",
-        port: "8001",
-        pathname: "/media/**",
-      },
-      {
-        protocol: "http",
         hostname: "127.0.0.1",
         port: "8001",
         pathname: "/media/**",
@@ -50,26 +46,19 @@ const nextConfig = {
         hostname: "images.unsplash.com",
         pathname: "/**",
       },
-      {
-        protocol: "https",
-        hostname: "*.unsplash.com",
-        pathname: "/**",
-      },
     ],
   },
 
   trailingSlash: false,
-
-  // ✅ Remove this line to eliminate warning
-  // swcMinify: true,
 
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
 
   async rewrites() {
+    // Default to domain, fallback to IP
     const CMS_URL =
-      process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+      process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
 
     const cleanCMSUrl = CMS_URL.replace(/\/$/, "");
 
