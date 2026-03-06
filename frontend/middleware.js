@@ -1,3 +1,4 @@
+// middleware.js
 import { NextResponse } from "next/server";
 
 /* 🌍 Country → locale mapping (only where content exists) */
@@ -8,6 +9,57 @@ const COUNTRY_LOCALE_MAP = {
   DE: "/de",
   ES: "/es",
 };
+
+// Cache for article checks to avoid repeated API calls
+const articleCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function checkArticleExists(slug, apiUrl) {
+  const cacheKey = `article-${slug}`;
+  const cached = articleCache.get(cacheKey);
+  
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+    return cached.exists;
+  }
+  
+  try {
+    // Use AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    
+    // Check article endpoint first (most likely)
+    const articleRes = await fetch(`${apiUrl}/api/articles/${slug}/`, {
+      method: "HEAD",
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (articleRes.ok) {
+      articleCache.set(cacheKey, { exists: 'article', timestamp: Date.now() });
+      return 'article';
+    }
+    
+    // Check other content types in parallel
+    const checkPromises = [
+      fetch(`${apiUrl}/api/news/${slug}/`, { method: "HEAD", signal: AbortSignal.timeout(2000) }).then(r => r.ok ? 'news' : null).catch(() => null),
+      fetch(`${apiUrl}/api/wellness/topics/${slug}/`, { method: "HEAD", signal: AbortSignal.timeout(2000) }).then(r => r.ok ? 'wellness' : null).catch(() => null),
+      fetch(`${apiUrl}/api/yoga/topics/${slug}/`, { method: "HEAD", signal: AbortSignal.timeout(2000) }).then(r => r.ok ? 'yoga' : null).catch(() => null),
+      fetch(`${apiUrl}/api/videos/${slug}/`, { signal: AbortSignal.timeout(2000) }).then(r => r.ok ? 'videos' : null).catch(() => null)
+    ];
+    
+    const results = await Promise.allSettled(checkPromises);
+    const foundType = results.find(r => r.status === 'fulfilled' && r.value)?.value;
+    
+    articleCache.set(cacheKey, { exists: foundType || false, timestamp: Date.now() });
+    return foundType || false;
+    
+  } catch (error) {
+    console.error(`Article check failed for ${slug}:`, error.message);
+    articleCache.set(cacheKey, { exists: false, timestamp: Date.now() });
+    return false;
+  }
+}
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
@@ -27,7 +79,7 @@ export async function middleware(request) {
      2️⃣ BOT detection (SEO CRITICAL)
   ---------------------------------- */
   const userAgent = request.headers.get("user-agent") || "";
-  const isBot = /bot|crawler|spider|google|bing|yandex|baidu/i.test(userAgent);
+  const isBot = /bot|crawler|spider|googlebot|bingbot|yandexbot|baiduspider|facebookexternalhit|twitterbot/i.test(userAgent);
 
   /* ==================================================
      🔁 PART A — ARTICLE FALLBACK REDIRECT (EXISTING)
@@ -35,94 +87,62 @@ export async function middleware(request) {
   ================================================== */
   if (pathname.startsWith("/articles/")) {
     const slug = pathname.replace("/articles/", "").replace(/\/$/, "");
+    
+    // Don't process empty slugs
+    if (!slug) return NextResponse.next();
 
     try {
-      const apiUrl =
-        process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-
-      // 1️⃣ Articles
-      const articleRes = await fetch(
-        `${apiUrl}/api/articles/${slug}/`,
-        { method: "HEAD" }
-      );
-
-      if (!articleRes.ok) {
-        // 2️⃣ News
-        const newsRes = await fetch(
-          `${apiUrl}/api/news/${slug}/`,
-          { method: "HEAD" }
-        );
-        if (newsRes.ok) {
+      const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
+      
+      const foundType = await checkArticleExists(slug, apiUrl);
+      
+      if (foundType && foundType !== 'article') {
+        const redirectPath = foundType === 'news' ? '/news/' :
+                            foundType === 'wellness' ? '/wellness/' :
+                            foundType === 'yoga' ? '/yoga-exercise/' :
+                            foundType === 'videos' ? '/videos/' : null;
+        
+        if (redirectPath) {
           return NextResponse.redirect(
-            new URL(`/news/${slug}`, request.url),
-            302
+            new URL(`${redirectPath}${slug}`, request.url),
+            302 // Temporary redirect
           );
         }
-
-        // 3️⃣ Wellness
-        const wellnessRes = await fetch(
-          `${apiUrl}/api/wellness/topics/${slug}/`,
-          { method: "HEAD" }
-        );
-        if (wellnessRes.ok) {
-          return NextResponse.redirect(
-            new URL(`/wellness/${slug}`, request.url),
-            302
-          );
-        }
-
-        // 4️⃣ Yoga
-        const yogaRes = await fetch(
-          `${apiUrl}/api/yoga/topics/${slug}/`,
-          { method: "HEAD" }
-        );
-        if (yogaRes.ok) {
-          return NextResponse.redirect(
-            new URL(`/yoga-exercise/${slug}`, request.url),
-            302
-          );
-        }
-
-        // 5️⃣ Videos (HEAD not allowed)
-        try {
-          const videoRes = await fetch(
-            `${apiUrl}/api/videos/${slug}/`
-          );
-          if (videoRes.ok) {
-            return NextResponse.redirect(
-              new URL(`/videos/${slug}`, request.url),
-              302
-            );
-          }
-        } catch (_) {}
       }
+      
+      // If article exists or no match found, continue
+      return NextResponse.next();
+      
     } catch (err) {
       console.error("Article middleware check failed:", err);
+      return NextResponse.next(); // Continue on error
     }
-
-    // If article logic matched or failed → STOP here
-    return NextResponse.next();
   }
 
   /* ==================================================
      🌍 PART B — WORLDWIDE COUNTRY REDIRECT (SEO SAFE)
   ================================================== */
 
+  // Skip for API routes and static files
+  if (pathname.startsWith("/api") || pathname.includes(".")) {
+    return NextResponse.next();
+  }
+
   // If URL already has locale → DO NOTHING
   if (/^\/(uk|cn|fr|de|es)(\/|$)/.test(pathname)) {
     return NextResponse.next();
   }
 
-  // Never redirect bots
+  // Never redirect bots (SEO critical)
   if (isBot) {
     return NextResponse.next();
   }
 
-  // Detect country
-  const country =
-    request.headers.get("cf-ipcountry") ||
-    request.geo?.country ||
-    null;
+  // Detect country from Vercel/Cloudflare headers
+  const country = request.headers.get("x-vercel-ip-country") ||
+                 request.headers.get("cf-ipcountry") ||
+                 request.geo?.country ||
+                 null;
 
   if (!country) {
     return NextResponse.next();
@@ -135,9 +155,17 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
-  // 302 redirect (SEO safe)
+  // Don't redirect if it's the root path (to avoid redirect loops)
+  if (pathname === "/") {
+    return NextResponse.next();
+  }
+
+  // 302 redirect (SEO safe) with locale prefix
   const url = request.nextUrl.clone();
   url.pathname = `${localePrefix}${pathname}`;
+  
+  // Preserve query parameters
+  url.search = request.nextUrl.search;
 
   return NextResponse.redirect(url, 302);
 }
@@ -146,6 +174,6 @@ export async function middleware(request) {
 export const config = {
   matcher: [
     "/articles/:path*",
-    "/((?!_next|api|favicon.ico).*)",
+    "/((?!_next|api|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
