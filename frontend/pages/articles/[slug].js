@@ -35,7 +35,7 @@ const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
 ========================================================= */
 const getSafeCMSUrl = () => {
   // Use environment variable with fallback to your Oracle CMS
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
 
   // For client-side, we might need to replace the hostname
   if (typeof window !== "undefined") {
@@ -55,7 +55,7 @@ const getSafeCMSUrl = () => {
 };
 
 // ⚠️ For SSR/SSG use env directly (build time)
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
 
 /* =========================================================
    ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
