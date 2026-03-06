@@ -23,7 +23,7 @@ import CommentSection from '../../components/CommentSection';
 import ReferencesSection from '../../components/ReferencesSection';
 
 // Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://161.118.184.217';
 
 // Language alternates for hreflang tags
 const LANGUAGE_ALTERNATES = [
@@ -132,8 +132,8 @@ const getProxiedImageUrl = (url) => {
   if (!url) return null;
 
   // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  if (url.includes('161.118.184.217')) {
+    return url.replace(/https?:\/\/161\.118\.184\.217\/media\//, '/cms-media/');
   }
 
   // Handle localhost patterns
@@ -156,8 +156,8 @@ const fixMediaUrls = (html) => {
 
   return html
     // Oracle CMS patterns
-    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
-    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
+    .replace(/src="https?:\/\/161\.118\.184\.217\/media\//g, 'src="/cms-media/')
+    .replace(/src='https?:\/\/161\.118\.184\.217\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
     .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
     .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
