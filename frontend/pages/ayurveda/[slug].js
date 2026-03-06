@@ -1,3 +1,4 @@
+// pages/ayurveda/[slug].js
 import { useRouter } from "next/router";
 import Link from "next/link";
 import SEO from "../../components/SEO";
@@ -6,347 +7,33 @@ import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
+import {
+  getProxiedImageUrl,
+  fixWagtailInternalLinks,
+  replaceEmbedImages,
+  extractHeadings,
+  slugify,
+  addHeadingIds,
+  tryEndpoints,
+  extractEmbedImageIds,
+  fetchWagtailImageUrl,
+  getSafeCMSUrl,
+  parseDateSafe,
+  formatDateDisplay,
+  getTimeAgo
+} from "../../utils/api";
 
 /* =========================================================
-   ✅ UPDATED: Use environment variable for CMS URL
-   No more hardcoded localhost/0.0.0.0/127.0.0.1
-========================================================= */
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
-
-/* =========================================================
-   ✅ FIX: Mobile cannot fetch localhost / 127.0.0.1
-========================================================= */
-const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
-
-  if (typeof window !== "undefined") {
-    const frontendHost = window.location.hostname;
-    
-    // Only replace if the base contains localhost/127.0.0.1
-    // This ensures we don't break the Oracle URL
-    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
-      base = base
-        .replace("0.0.0.0", frontendHost)
-        .replace("127.0.0.1", frontendHost)
-        .replace("localhost", frontendHost);
-    }
-  }
-
-  return base;
-};
-
-/* =========================================================
-   ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
-   Updated to handle Oracle CMS URL
-========================================================= */
-const fixMediaUrlsInHtml = (html) => {
-  if (!html) return "";
-
-  return html
-    // Oracle CMS patterns
-    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
-    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/127\.0\.0\.1:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/localhost:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/localhost:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="\/media\//g, 'src="/cms-media/')
-    .replace(/src='\/media\//g, "src='/cms-media/")
-    .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/127\.0\.0\.1:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/localhost:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/localhost:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/\/cms-media\/media\//g, "/cms-media/");
-};
-
-/* =========================================================
-   ✅ Helper: Single image URL fix
-   Updated to handle Oracle CMS URL
-========================================================= */
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Handle Oracle CMS URL
-  if (url.includes('161.118.184.217')) {
-    return url
-      .replace(/https?:\/\/161\.118\.184\.217\/media\//, '/cms-media/')
-      .replace('/cms-media/media/', '/cms-media/');
-  }
-
-  if (url.startsWith("http://0.0.0.0:8001")) {
-    return url
-      .replace("http://0.0.0.0:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://127.0.0.1:8001")) {
-    return url
-      .replace("http://127.0.0.1:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://localhost:8001")) {
-    return url
-      .replace("http://localhost:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("/media/")) {
-    return `/cms-media${url.replace("/media/", "/")}`;
-  }
-
-  if (url.startsWith("/cms-media/")) {
-    return url.replace("/cms-media/media/", "/cms-media/");
-  }
-
-  return url;
-};
-
-/* =========================================================
-   ✅ Wagtail EMBED IMAGE FIX FUNCTIONS
-========================================================= */
-const extractEmbedImageIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/embedtype="image"[^>]*id="(\d+)"/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailImageUrl = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/images/${id}/`);
-    if (!res.ok) throw new Error(`Image ${id} fetch failed`);
-
-    const data = await res.json();
-
-    const url =
-      data?.meta?.download_url ||
-      data?.meta?.preview_url ||
-      data?.meta?.original?.url ||
-      data?.original?.url ||
-      null;
-
-    if (!url) return null;
-
-    if (url.startsWith("/")) return `${safeBaseUrl}${url}`;
-
-    return url;
-  } catch (err) {
-    console.error("fetchWagtailImageUrl error:", err);
-    return null;
-  }
-};
-
-const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
-  try {
-    if (!html) return "";
-
-    let updatedHtml = html;
-    const ids = extractEmbedImageIds(updatedHtml);
-
-    if (!ids.length) return updatedHtml;
-
-    for (const id of ids) {
-      const imgUrl = await fetchWagtailImageUrl(id, safeBaseUrl);
-
-      if (!imgUrl) {
-        updatedHtml = updatedHtml.replace(
-          new RegExp(
-            `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-            "g"
-          ),
-          ""
-        );
-        continue;
-      }
-
-      const proxiedUrl = getProxiedImageUrl(imgUrl);
-
-      updatedHtml = updatedHtml.replace(
-        new RegExp(
-          `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-          "g"
-        ),
-        `<img src="${proxiedUrl}" alt="Ayurveda Image" class="max-w-full w-full h-auto rounded-xl shadow my-4" loading="lazy" />`
-      );
-    }
-
-    return updatedHtml;
-  } catch (err) {
-    console.error("replaceEmbedImages error:", err);
-    return html;
-  }
-};
-
-/* =========================================================
-   ✅ FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
-   Converts: <a linktype="page" id="75"> -> <a href="/ayurveda/slug">
-========================================================= */
-const extractInternalPageLinkIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<a[^>]*linktype="page"[^>]*id="(\d+)"[^>]*>/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailPageById = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/pages/${id}/`);
-    if (!res.ok) throw new Error("page fetch failed");
-    return await res.json();
-  } catch (err) {
-    console.error(`Error fetching page ${id}:`, err);
-    return null;
-  }
-};
-
-const buildFrontendUrlFromWagtailPage = (pageData) => {
-  if (!pageData) return "#";
-  
-  const type = (pageData?.meta?.type || "").toLowerCase();
-  const slug = pageData?.meta?.slug || pageData?.slug;
-
-  if (!slug) return "#";
-
-  // Check if it's a full URL that needs transformation
-  if (slug.includes('http://') || slug.includes('https://')) {
-    // Extract just the slug part from the URL
-    const urlParts = slug.split('/');
-    const lastPart = urlParts[urlParts.length - 1];
-    if (lastPart && !lastPart.includes('.')) {
-      return `/${type.split('.')[0] || 'page'}/${lastPart}`;
-    }
-  }
-
-  // Route mappings based on page type
-  if (type.includes("ayurveda")) return `/ayurveda/${slug}`;
-  if (type.includes("news")) return `/news/${slug}`;
-  if (type.includes("article")) return `/articles/${slug}`;
-  if (type.includes("condition")) return `/conditions/${slug}`;
-  if (type.includes("drug")) return `/drugs/${slug}`;
-  if (type.includes("homeopathy")) return `/homeopathy/${slug}`;
-  if (type.includes("wellness")) return `/wellness/${slug}`;
-  if (type.includes("yoga")) return `/yoga-exercise/${slug}`;
-
-  // Fallback
-  return `/${slug}`;
-};
-
-const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
-  if (!html) return "";
-
-  let updated = html;
-
-  try {
-    // 1) Fix internal page links
-    const ids = extractInternalPageLinkIds(updated);
-    
-    if (ids.length > 0) {
-      // Fetch all pages in parallel
-      const pageDataPromises = ids.map(id => fetchWagtailPageById(id, safeBaseUrl));
-      const pageDataResults = await Promise.all(pageDataPromises);
-      
-      // Create a map of id to page data
-      const pageMap = new Map();
-      ids.forEach((id, index) => {
-        if (pageDataResults[index]) {
-          pageMap.set(id, pageDataResults[index]);
-        }
-      });
-
-      // Replace each link
-      ids.forEach((id) => {
-        const pageData = pageMap.get(id);
-        const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
-
-        updated = updated.replace(
-          new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-          `<a$1$2href="${url}"$3>`
-        );
-      });
-    }
-
-    // 2) Fix document links
-    updated = updated.replace(
-      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-      `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-    );
-
-    // 3) Remove leftover wagtail attributes
-    updated = updated.replace(/linktype="[^"]*"/g, "");
-    updated = updated.replace(/\s?id="\d+"/g, "");
-
-    // 4) Make external links open in new tab
-    updated = updated.replace(
-      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
-      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
-    );
-
-  } catch (error) {
-    console.error("Error fixing internal links:", error);
-  }
-
-  return updated;
-};
-
-/* =========================================================
-   ✅ TOC Helpers
-========================================================= */
-const slugify = (text) =>
-  (text || "")
-    .toLowerCase()
-    .trim()
-    .replace(/<\/?[^>]+(>|$)/g, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-
-const extractHeadings = (html) => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<h([2-3])[^>]*>(.*?)<\/h\1>/gi)];
-  return matches.map((m) => ({
-    level: Number(m[1]),
-    text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
-    id: slugify(m[2].replace(/<\/?[^>]+(>|$)/g, "").trim())
-  }));
-};
-
-const addHeadingIds = (html, headings) => {
-  if (!html || !headings?.length) return html;
-
-  let updated = html;
-  headings.forEach((h) => {
-    if (!h.id) return;
-    
-    updated = updated.replace(
-      new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${h.id}">${h.text}</h${h.level}>`
-    );
-  });
-
-  return updated;
-};
-
-/* =========================================================
-   ENHANCED: Date Functions with Fallbacks
+   ✅ Date Functions with Fallbacks
 ========================================================= */
 
 const createFallbackDates = () => {
   const now = new Date();
-
   const publishedDate = new Date(now);
   publishedDate.setDate(now.getDate() - 30);
-
   const updatedDate = new Date(now);
   updatedDate.setDate(now.getDate() - 7);
-
   const lastReviewedDate = new Date(now);
   lastReviewedDate.setDate(now.getDate() - 15);
 
@@ -356,17 +43,6 @@ const createFallbackDates = () => {
     lastReviewed: lastReviewedDate,
     isFallback: true,
   };
-};
-
-const parseDateSafe = (dateString) => {
-  if (!dateString) return null;
-
-  try {
-    const date = new Date(dateString);
-    return !isNaN(date.getTime()) ? date : null;
-  } catch (error) {
-    return null;
-  }
 };
 
 const extractDatesFromTopic = (topic) => {
@@ -460,51 +136,6 @@ const extractDatesFromTopic = (topic) => {
   };
 };
 
-const formatDateDisplay = (date) => {
-  if (!date) return "Date not available";
-  try {
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch (error) {
-    return "Invalid date";
-  }
-};
-
-const getTimeAgo = (date) => {
-  if (!date) return "";
-  try {
-    const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
-
-    if (seconds < 60) return "just now";
-
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60)
-      return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-
-    const days = Math.floor(hours / 24);
-    if (days === 1) return "yesterday";
-    if (days < 7) return `${days} days ago`;
-
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return `${weeks} week${weeks !== 1 ? "s" : ""} ago`;
-
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months} month${months !== 1 ? "s" : ""} ago`;
-
-    const years = Math.floor(days / 365);
-    return `${years} year${years !== 1 ? "s" : ""} ago`;
-  } catch (error) {
-    return "";
-  }
-};
-
 const isContentUpdated = (publishedDate, updatedDate) => {
   if (!publishedDate || !updatedDate) return false;
   try {
@@ -517,7 +148,7 @@ const isContentUpdated = (publishedDate, updatedDate) => {
 };
 
 /* =========================================================
-   DateDisplay Component
+   ✅ DateDisplay Component
 ========================================================= */
 
 const DateDisplay = ({
@@ -547,6 +178,7 @@ const DateDisplay = ({
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -588,6 +220,7 @@ const DateDisplay = ({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -631,6 +264,7 @@ const DateDisplay = ({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -672,6 +306,7 @@ const DateDisplay = ({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -719,66 +354,47 @@ const DateDisplay = ({
 };
 
 /* =========================================================
-   Helper Functions
+   ✅ TableOfContents Component
 ========================================================= */
 
-const getAbsoluteImageUrl = (url) => {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/")) return `${CMS_API_URL}${url}`;
-  return url;
-};
+const TableOfContents = ({ headings = [] }) => {
+  if (!headings.length) return null;
 
-const fixRelativeMediaUrls = (html = "") => {
-  if (!html) return "";
-  let processed = html;
+  const scrollToHeading = useCallback((id) => {
+    if (typeof window === "undefined") return;
+    const el = document.getElementById(id);
+    if (!el) return;
 
-  processed = processed.replace(/src="\/media\//g, `src="${CMS_API_URL}/media/`);
-  processed = processed.replace(/src='\/media\//g, `src='${CMS_API_URL}/media/`);
+    const offset = 90;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
 
-  processed = processed.replace(/url\(\/media\//g, `url(${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\('\/media\//g, `url('${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\("\/media\//g, `url("${CMS_API_URL}/media/`);
-
-  return processed;
-};
-
-const fixWagtailEmbedImages = (html = "", imageMap = {}) => {
-  if (!html) return "";
-
-  let processed = html;
-
-  processed = processed.replace(
-    /<embed\s+[^>]*embedtype="image"[^>]*id="(\d+)"[^>]*\/?>/gi,
-    (match, id) => {
-      const imgUrl = imageMap?.[id] ? getAbsoluteImageUrl(imageMap[id]) : null;
-
-      if (!imgUrl) {
-        return `<div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 my-4">
-          Image not found (ID: ${id})
-        </div>`;
-      }
-
-      return `
-        <img
-          src="${imgUrl}"
-          alt="Ayurveda Image"
-          class="max-w-full w-full h-auto rounded-xl shadow my-4"
-          loading="lazy"
-        />
-      `;
-    }
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+      <h3 className="text-lg font-bold mb-3">On this page</h3>
+      <nav aria-label="Table of contents">
+        <ul className="space-y-2 text-sm">
+          {headings.map((h) => (
+            <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
+              <button
+                onClick={() => scrollToHeading(h.id)}
+                className="text-gray-700 hover:text-amber-600 hover:underline text-left w-full transition-colors"
+                aria-label={`Scroll to ${h.text}`}
+              >
+                {h.text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </div>
   );
-
-  return processed;
 };
 
-const fixMediaUrls = (html = "", imageMap = {}) => {
-  let processed = html;
-  processed = fixWagtailEmbedImages(processed, imageMap);
-  processed = fixRelativeMediaUrls(processed);
-  return processed;
-};
+/* =========================================================
+   ✅ Author/Reviewer Helpers
+========================================================= */
 
 const getAuthorDisplayName = (author) => {
   if (!author) return null;
@@ -809,135 +425,100 @@ const getReviewerSlug = (reviewer) => {
   return null;
 };
 
-const TableOfContents = ({ headings = [] }) => {
-  if (!headings.length) return null;
-
-  const scrollToHeading = (id) => {
-    if (typeof window === "undefined") return;
-    const el = document.getElementById(id);
-    if (!el) return;
-
-    const offset = 90;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
-  };
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-      <h3 className="text-lg font-bold mb-3">On this page</h3>
-      <ul className="space-y-2 text-sm">
-        {headings.map((h) => (
-          <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
-            <button
-              onClick={() => scrollToHeading(h.id)}
-              className="text-gray-700 hover:text-amber-600 hover:underline text-left w-full transition-colors"
-            >
-              {h.text}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-};
-
 /* =========================================================
-   API Helpers
+   ✅ MAIN COMPONENT
 ========================================================= */
 
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
-   MAIN COMPONENT
-========================================================= */
-
-export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
+export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }) {
   const router = useRouter();
+  const [processedBody, setProcessedBody] = useState("");
+  const [processedReferences, setProcessedReferences] = useState("");
+  const [processingError, setProcessingError] = useState(null);
+  const safeCMS = useMemo(() => getSafeCMSUrl(), []);
 
   const { publishedDate, updatedDate, lastReviewedDate, isFallback } = useMemo(
     () => extractDatesFromTopic(topic),
     [topic]
   );
 
-  const [processedBody, setProcessedBody] = useState("");
-  const [processedReferences, setProcessedReferences] = useState("");
-  const safeCMS = useMemo(() => getSafeCMSUrl(), []);
-
   /* ✅ Content processing hooks */
   const rawBody = useMemo(
-    () => fixMediaUrlsInHtml(topic?.body || ""),
+    () => topic?.body || "",
     [topic?.body]
   );
 
   const rawReferences = useMemo(
-    () => fixMediaUrlsInHtml(topic?.references || ""),
+    () => topic?.references || "",
     [topic?.references]
   );
 
   /* =========================================================
-     ✅ Body processing pipeline:
-     1) fix media urls (already done in rawBody)
-     2) replace embed images
-     3) fix internal links (page/document)
+     ✅ Body processing pipeline
   ========================================================= */
   useEffect(() => {
     let mounted = true;
 
-    const run = async () => {
-      if (!rawBody) return;
+    const processContent = async () => {
+      if (!rawBody) {
+        setProcessedBody('');
+        return;
+      }
 
+      setProcessingError(null);
+      
       try {
-        // 1) embed images
-        const replaced = await replaceEmbedImages(rawBody, safeCMS);
-
-        // 2) internal links clickable
-        const linked = await fixWagtailInternalLinks(replaced, safeCMS);
-
-        if (mounted) setProcessedBody(linked);
-      } catch (error) {
-        console.error("Error processing body:", error);
-        if (mounted) setProcessedBody(rawBody);
+        console.log("🔄 Processing Ayurveda content...");
+        
+        // 1) Replace embed images
+        const withImages = await replaceEmbedImages(rawBody, safeCMS);
+        
+        // 2) Fix internal links
+        const withLinks = await fixWagtailInternalLinks(withImages, safeCMS);
+        
+        if (mounted) {
+          setProcessedBody(withLinks);
+          console.log("✅ Ayurveda content processed");
+        }
+      } catch (err) {
+        console.error("❌ Error processing content:", err);
+        if (mounted) {
+          setProcessingError("Failed to process content");
+          setProcessedBody(rawBody);
+        }
       }
     };
 
-    run();
+    processContent();
 
     return () => {
       mounted = false;
     };
   }, [rawBody, safeCMS]);
 
-  /* ✅ References link fix too */
+  /* ✅ References processing */
   useEffect(() => {
     let mounted = true;
 
-    const run = async () => {
-      if (!rawReferences) return;
+    const processReferences = async () => {
+      if (!rawReferences) {
+        setProcessedReferences('');
+        return;
+      }
 
       try {
-        const linked = await fixWagtailInternalLinks(rawReferences, safeCMS);
-        if (mounted) setProcessedReferences(linked);
-      } catch (error) {
-        console.error("Error processing references:", error);
-        if (mounted) setProcessedReferences(rawReferences);
+        const withLinks = await fixWagtailInternalLinks(rawReferences, safeCMS);
+        if (mounted) {
+          setProcessedReferences(withLinks);
+        }
+      } catch (err) {
+        console.error("❌ Error processing references:", err);
+        if (mounted) {
+          setProcessedReferences(rawReferences);
+        }
       }
     };
 
-    run();
+    processReferences();
 
     return () => {
       mounted = false;
@@ -945,12 +526,32 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
   }, [rawReferences, safeCMS]);
 
   const headings = useMemo(() => extractHeadings(processedBody), [processedBody]);
-
   const bodyWithIds = useMemo(
     () => addHeadingIds(processedBody, headings),
     [processedBody, headings]
   );
 
+  // Error state
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center">
+        <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
+          <h1 className="text-2xl font-bold text-red-800 mb-3">
+            Error Loading Ayurveda Topic
+          </h1>
+          <p className="text-red-700 mb-6">{error}</p>
+          <Link
+            href="/ayurveda"
+            className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            ← Browse All Ayurveda Topics
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
   if (router.isFallback) {
     return (
       <div className="container mx-auto px-4 py-16">
@@ -963,6 +564,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
     );
   }
 
+  // Not found state
   if (!topic) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
@@ -987,7 +589,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
   const fallbackImage =
     "https://images.unsplash.com/photo-1542736667-069246bdbc6d?auto=format&fit=crop&w=1200&h=630";
 
-  const mainImageUrl = getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image) || fallbackImage;
+  const mainImageUrl = getProxiedImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
@@ -1001,22 +603,34 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
         title={`${topic.title} - Ayurveda - Niinfomed`}
         description={topic.summary?.substring(0, 160) || topic.title}
         image={mainImageUrl}
+        url={`https://niinfomed.com/ayurveda/${topic.slug}`}
       />
 
-      {/* ✅ Mobile Responsive Container */}
+      {/* Processing error alert */}
+      {processingError && (
+        <div className="container mx-auto px-4 mt-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-yellow-700 text-sm">
+              <strong>Note:</strong> Some content may not display correctly. Please refresh or try again later.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Container */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb */}
-        <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1">
+        <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1" aria-label="Breadcrumb">
           <Link href="/" className="hover:text-gray-800 transition-colors">
             Home
           </Link>
-          <span>/</span>
+          <span aria-hidden="true">/</span>
           <Link href="/ayurveda" className="hover:text-gray-800 transition-colors">
             Ayurveda
           </Link>
           {topic.category?.name && (
             <>
-              <span>/</span>
+              <span aria-hidden="true">/</span>
               <span className="text-gray-700 font-medium">
                 {topic.category.name}
               </span>
@@ -1036,7 +650,10 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
                 sizes="(max-width: 768px) 100vw, 900px"
                 className="object-cover"
                 priority
-                unoptimized={mainImageUrl?.includes("127.0.0.1") || mainImageUrl?.includes("161.118.167.107")}
+                unoptimized={mainImageUrl?.includes('cms-media') || mainImageUrl?.includes('127.0.0.1')}
+                onError={(e) => {
+                  e.target.src = fallbackImage;
+                }}
               />
             </div>
 
@@ -1132,7 +749,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
             )}
 
             {/* Body */}
-            {processedBody && (
+            {bodyWithIds && (
               <div className="mb-12">
                 <h2 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6">
                   About {topic.title}
@@ -1142,16 +759,17 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
                   className="prose prose-base sm:prose-lg max-w-none
                              prose-img:w-full prose-img:h-auto
                              prose-img:rounded-xl prose-img:shadow
-                             prose-headings:scroll-mt-24"
+                             prose-headings:scroll-mt-24
+                             prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline"
                   dangerouslySetInnerHTML={{ __html: bodyWithIds }}
                 />
               </div>
             )}
 
-            {/* References (your component) */}
-            {topic.references && (
+            {/* References */}
+            {processedReferences && (
               <div className="mt-8 pt-8 border-t border-gray-200">
-                <ReferencesSection references={processedReferences || topic.references || ""} />
+                <ReferencesSection references={processedReferences} />
               </div>
             )}
 
@@ -1184,8 +802,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
 
                   <div className="space-y-4">
                     {relatedTopics.slice(0, 3).map((item) => {
-                      const relatedImage =
-                        getProxiedImageUrl(item.image) || getAbsoluteImageUrl(item.image) || fallbackImage;
+                      const relatedImage = getProxiedImageUrl(item.image) || fallbackImage;
 
                       return (
                         <Link
@@ -1200,6 +817,9 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
                                 alt={item.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"
+                                onError={(e) => {
+                                  e.target.src = fallbackImage;
+                                }}
                               />
                             </div>
 
@@ -1232,27 +852,42 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap }) {
           </aside>
         </div>
       </div>
+
+      <style jsx global>{`
+        .prose a {
+          color: #2563eb;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          transition: color 0.2s;
+        }
+        .prose a:hover {
+          color: #1d4ed8;
+        }
+        .prose h2,
+        .prose h3 {
+          scroll-margin-top: 5rem;
+        }
+      `}</style>
     </>
   );
 }
 
 /* =========================================================
-   STATIC GENERATION 
+   ✅ STATIC GENERATION 
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
     
     const listEndpoints = [
       `${baseUrl}/api/ayurveda/topics/`,
+      `${baseUrl}/api/ayurveda/`,
       `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&fields=slug`,
-      `${baseUrl}/api/v1/ayurveda/topics/`,
-      `${baseUrl}/ayurveda/topics/`,
     ];
 
     console.log("🔍 Fetching Ayurveda paths from Oracle CMS...");
-    const { data } = await tryFetchFromMultipleEndpoints(listEndpoints, {
+    const { data } = await tryEndpoints(listEndpoints, {
       timeout: 10000,
     });
 
@@ -1268,83 +903,99 @@ export async function getStaticPaths() {
     console.log(`✅ Found ${topics.length} Ayurveda topics`);
 
     const paths = topics
-      .filter(t => t.slug)
+      .filter(t => t && t.slug)
       .map((t) => ({
-        params: { slug: t.slug },
+        params: { slug: String(t.slug) },
       }));
 
-    return { paths, fallback: "blocking" };
+    return { 
+      paths, 
+      fallback: "blocking" 
+    };
   } catch (error) {
     console.error("Error in getStaticPaths:", error);
-    return { paths: [], fallback: "blocking" };
+    return { 
+      paths: [], 
+      fallback: "blocking" 
+    };
   }
 }
 
 export async function getStaticProps({ params }) {
   try {
     const slug = params.slug;
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
     
     console.log(`📡 Fetching Ayurveda topic: ${slug} from Oracle CMS`);
 
     const detailEndpoints = [
-      `${baseUrl}/api/ayurveda/topics/${slug}`,
       `${baseUrl}/api/ayurveda/topics/${slug}/`,
+      `${baseUrl}/api/ayurveda/${slug}/`,
       `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&slug=${slug}`,
-      `${baseUrl}/api/v1/ayurveda/topics/${slug}`,
-      `${baseUrl}/api/v1/ayurveda/topics/${slug}/`,
-      `${baseUrl}/ayurveda/topics/${slug}`,
-      `${baseUrl}/ayurveda/topics/${slug}/`,
     ];
 
     const listEndpoints = [
       `${baseUrl}/api/ayurveda/topics/`,
+      `${baseUrl}/api/ayurveda/`,
       `${baseUrl}/api/v2/pages/?type=ayurveda.AyurvedaPage&fields=title,slug,image,summary&limit=6`,
-      `${baseUrl}/api/v1/ayurveda/topics/`,
-      `${baseUrl}/ayurveda/topics/`,
     ];
 
-    const [{ data: topic }, { data: listData }] = await Promise.all([
-      tryFetchFromMultipleEndpoints(detailEndpoints, {
+    const [topicResponse, listResponse] = await Promise.allSettled([
+      tryEndpoints(detailEndpoints, {
         timeout: 10000,
         params: { lang: "en" },
       }),
-      tryFetchFromMultipleEndpoints(listEndpoints, {
+      tryEndpoints(listEndpoints, {
         timeout: 10000,
         params: { limit: 6, lang: "en" },
       }),
     ]);
 
-    if (!topic) {
+    // Handle topic data
+    let topicData = null;
+    if (topicResponse.status === 'fulfilled' && topicResponse.value?.data) {
+      const data = topicResponse.value.data;
+      if (data.items && data.items.length > 0) {
+        topicData = data.items[0];
+      } else if (data.results && data.results.length > 0) {
+        topicData = data.results[0];
+      } else {
+        topicData = data;
+      }
+    }
+
+    if (!topicData) {
       console.log(`❌ Ayurveda topic not found: ${slug}`);
-      return { notFound: true, revalidate: 60 };
+      return { 
+        notFound: true, 
+        revalidate: 60 
+      };
     }
 
-    // Handle different response formats
-    let topicData = topic;
-    if (topic.items && topic.items.length > 0) {
-      topicData = topic.items[0];
-    }
+    // Handle related topics
+    let relatedTopics = [];
+    if (listResponse.status === 'fulfilled' && listResponse.value?.data) {
+      const listData = listResponse.value.data;
+      let allTopics = [];
+      
+      if (Array.isArray(listData)) {
+        allTopics = listData;
+      } else if (listData?.items) {
+        allTopics = listData.items;
+      } else if (listData?.results) {
+        allTopics = listData.results;
+      }
 
-    // Process list data for related topics
-    let allTopics = [];
-    if (Array.isArray(listData)) {
-      allTopics = listData;
-    } else if (listData?.items) {
-      allTopics = listData.items;
-    } else if (listData?.results) {
-      allTopics = listData.results;
+      relatedTopics = allTopics
+        .filter((t) => t && t.slug && t.slug !== slug)
+        .slice(0, 3);
     }
-
-    const relatedTopics = allTopics
-      .filter((t) => t.slug !== slug)
-      .slice(0, 3);
 
     // Extract image IDs for embed images
     const ids = extractEmbedImageIds(topicData.body || "");
     const imageMap = {};
 
-    await Promise.all(
+    await Promise.allSettled(
       ids.map(async (id) => {
         const url = await fetchWagtailImageUrl(id, baseUrl);
         if (url) imageMap[id] = url;
@@ -1354,13 +1005,21 @@ export async function getStaticProps({ params }) {
     return {
       props: {
         topic: topicData,
-        relatedTopics,
+        relatedTopics: relatedTopics || [],
         imageMap,
       },
-      revalidate: 3600,
+      revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
     console.error(`Error fetching Ayurveda topic ${params.slug}:`, error);
-    return { notFound: true, revalidate: 60 };
+    return { 
+      props: {
+        error: 'Failed to load Ayurveda topic. Please try again later.',
+        topic: null,
+        relatedTopics: [],
+        imageMap: {}
+      },
+      revalidate: 60 
+    };
   }
 }
