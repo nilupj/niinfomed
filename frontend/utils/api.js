@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API URL configuration - use environment variable with fallback to Oracle CMS
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://161.118.184.217';
 const DEFAULT_LANG = 'en';
 
 // Helper to get base URL without double protocol
