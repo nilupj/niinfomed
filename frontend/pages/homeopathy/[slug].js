@@ -1,313 +1,333 @@
-import { useState, useEffect, useMemo } from "react";
+// pages/homeopathy/[slug].js
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import axios from "axios";
 import { NextSeo } from "next-seo";
 import Head from "next/head";
 
 import ShareButton from "../../components/ShareButton";
 import CommentSection from "../../components/CommentSection";
+import {
+  getProxiedImageUrl,
+  fixWagtailInternalLinks,
+  replaceEmbedImages,
+  extractHeadings,
+  slugify,
+  addHeadingIds,
+  getSafeCMSUrl,
+  fixMediaUrls,
+  tryEndpoints,
+  parseDateSafe,
+  formatDateDisplay,
+  getTimeAgo
+} from "../../utils/api";
 
 /* =========================================================
-   ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
+   ✅ Date Functions
 ========================================================= */
-const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
 
-  if (typeof window !== "undefined") {
-    const frontendHost = window.location.hostname;
+const createFallbackDates = () => {
+  const now = new Date();
+  const publishedDate = new Date(now);
+  publishedDate.setDate(now.getDate() - 60);
+  const updatedDate = new Date(now);
+  updatedDate.setDate(now.getDate() - 30);
+  const lastReviewedDate = new Date(now);
+  lastReviewedDate.setDate(now.getDate() - 45);
 
-    base = base
-      .replace("0.0.0.0", frontendHost)
-      .replace("127.0.0.1", frontendHost)
-      .replace("localhost", frontendHost);
-  }
-
-  return base;
+  return {
+    published: publishedDate,
+    updated: updatedDate,
+    lastReviewed: lastReviewedDate,
+    isFallback: true
+  };
 };
 
-// ⚠️ For SSR/SSG use env directly (build time)
-const CMS_API_URL =
-  process.env.NEXT_PUBLIC_CMS_API_URL || "http://127.0.0.1:8001";
+const extractDatesFromTopic = (topic) => {
+  if (!topic) {
+    const fallback = createFallbackDates();
+    return {
+      publishedDate: fallback.published,
+      updatedDate: fallback.updated,
+      lastReviewedDate: fallback.lastReviewed,
+      isFallback: true
+    };
+  }
+
+  const dateFieldGroups = {
+    published: [
+      'first_published_at', 'first_published_date', 'published_date',
+      'publish_date', 'published_at', 'publication_date', 'created_at',
+      'created_date', 'date_published', 'date'
+    ],
+    updated: [
+      'last_published_at', 'last_published_date', 'updated_at',
+      'updated_date', 'modified_at', 'modified_date', 'last_updated',
+      'last_modified', 'update_date'
+    ],
+    reviewed: [
+      'last_reviewed', 'last_reviewed_date', 'reviewed_at',
+      'review_date', 'medical_review_date'
+    ]
+  };
+
+  const findDateFromFields = (fields) => {
+    for (const field of fields) {
+      if (topic[field]) {
+        const date = parseDateSafe(topic[field]);
+        if (date) return date;
+      }
+    }
+    return null;
+  };
+
+  const publishedDate = findDateFromFields(dateFieldGroups.published);
+  const updatedDate = findDateFromFields(dateFieldGroups.updated);
+  const lastReviewedDate = findDateFromFields(dateFieldGroups.reviewed);
+
+  if (!publishedDate && !updatedDate && !lastReviewedDate) {
+    const fallback = createFallbackDates();
+    return {
+      publishedDate: fallback.published,
+      updatedDate: fallback.updated,
+      lastReviewedDate: fallback.lastReviewed,
+      isFallback: true
+    };
+  }
+
+  const finalPublishedDate = publishedDate || updatedDate || lastReviewedDate;
+  const finalUpdatedDate = updatedDate || publishedDate || lastReviewedDate;
+  const finalReviewedDate = lastReviewedDate || updatedDate || publishedDate;
+
+  return {
+    publishedDate: finalPublishedDate,
+    updatedDate: finalUpdatedDate,
+    lastReviewedDate: finalReviewedDate,
+    isFallback: false
+  };
+};
+
+const isContentUpdated = (publishedDate, updatedDate) => {
+  if (!publishedDate || !updatedDate) return false;
+
+  try {
+    if (publishedDate.getTime() === updatedDate.getTime()) return false;
+    
+    const diffTime = Math.abs(updatedDate - publishedDate);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 7;
+  } catch (error) {
+    return false;
+  }
+};
 
 /* =========================================================
-   ✅ IMAGE OPTIMIZATION HELPER
+   ✅ DateDisplay Component
 ========================================================= */
-const optimizeImageUrl = (url, width = 1200) => {
-  if (!url) return null;
-  
-  // If using a proper CDN/image service, add optimization params
-  if (url.includes('unsplash.com') || url.includes('cloudinary') || url.includes('imgix')) {
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}w=${width}&q=75&auto=format,compress`;
-  }
-  
-  return getProxiedImageUrl(url);
-};
 
-/* ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset) */
-const fixMediaUrls = (html) => {
-  if (!html) return "";
+const DateDisplay = ({
+  publishedDate,
+  updatedDate,
+  lastReviewedDate,
+  isFallback = false,
+  compact = false,
+  className = ""
+}) => {
+  const isUpdated = isContentUpdated(publishedDate, updatedDate);
+
+  if (compact) {
+    return (
+      <div 
+        className={`flex flex-wrap items-center gap-2 text-sm text-gray-600 ${className}`}
+        aria-label="Publication dates"
+      >
+        <svg 
+          className="w-4 h-4 flex-shrink-0" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24" 
+          aria-hidden="true"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2} 
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" 
+          />
+        </svg>
+
+        <span className="font-medium">Published:</span>
+        <time 
+          dateTime={publishedDate?.toISOString() || ''}
+          className="whitespace-nowrap"
+        >
+          {formatDateDisplay(publishedDate)}
+        </time>
+
+        {isUpdated && (
+          <span 
+            className="ml-2 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200"
+            aria-label="This information has been updated"
+          >
+            Updated
+          </span>
+        )}
+
+        {isFallback && (
+          <span 
+            className="ml-2 px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200"
+            aria-label="Estimated dates based on typical publication timelines"
+          >
+            Estimated
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
-    html
-      .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
+    <div className={`space-y-4 ${className}`} role="region" aria-label="Information timeline">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Published Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Publication information"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div 
+              className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-900">Information Published</h4>
+              <p className="text-xs text-gray-500">When this information was first published</p>
+            </div>
+          </div>
 
-      .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/127\.0\.0\.1:8001\/media\//g, "src='/cms-media/")
+          <div className="text-center">
+            <time
+              dateTime={publishedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
+            >
+              {formatDateDisplay(publishedDate)}
+            </time>
+            <span className="text-sm text-gray-500 mt-1 block">
+              {getTimeAgo(publishedDate)}
+            </span>
+          </div>
+        </div>
 
-      .replace(/src="http:\/\/localhost:8001\/media\//g, 'src="/cms-media/')
-      .replace(/src='http:\/\/localhost:8001\/media\//g, "src='/cms-media/")
+        {/* Updated Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Update information"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div 
+              className={`w-10 h-10 rounded-full ${isUpdated ? 'bg-green-100' : 'bg-gray-100'} flex items-center justify-center`}
+              aria-hidden="true"
+            >
+              <svg 
+                className={`w-5 h-5 ${isUpdated ? 'text-green-600' : 'text-gray-600'}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-900">
+                {isUpdated ? 'Updated' : 'Last Updated'}
+              </h4>
+              <p className="text-xs text-gray-500">
+                {isUpdated ? 'Most recent update' : 'Last modification'}
+              </p>
+            </div>
+          </div>
 
-      .replace(/src="\/media\//g, 'src="/cms-media/')
-      .replace(/src='\/media\//g, "src='/cms-media/")
+          <div className="text-center">
+            <time
+              dateTime={updatedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
+            >
+              {formatDateDisplay(updatedDate)}
+            </time>
+            <span className="text-sm text-gray-500 mt-1 block">
+              {getTimeAgo(updatedDate)}
+            </span>
+          </div>
+        </div>
 
-      .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
-      .replace(/srcset='\/media\//g, "srcset='/cms-media/")
+        {/* Reviewed Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Medical review information"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div 
+              className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-900">Medically Reviewed</h4>
+              <p className="text-xs text-gray-500">Last medical review date</p>
+            </div>
+          </div>
 
-      .replace(
-        /srcset="http:\/\/0\.0\.0\.0:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/0\.0\.0\.0:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
-      .replace(
-        /srcset="http:\/\/127\.0\.0\.1:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/127\.0\.0\.1:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
-      .replace(
-        /srcset="http:\/\/localhost:8001\/media\//g,
-        'srcset="/cms-media/'
-      )
-      .replace(
-        /srcset='http:\/\/localhost:8001\/media\//g,
-        "srcset='/cms-media/"
-      )
+          <div className="text-center">
+            <time
+              dateTime={lastReviewedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
+            >
+              {formatDateDisplay(lastReviewedDate)}
+            </time>
+            <span className="text-sm text-gray-500 mt-1 block">
+              {getTimeAgo(lastReviewedDate)}
+            </span>
+          </div>
+        </div>
+      </div>
 
-      .replace(/\/cms-media\/media\//g, "/cms-media/")
+      {isFallback && (
+        <div 
+          className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl"
+          role="alert"
+          aria-label="Estimated dates notice"
+        >
+          <div className="flex items-start gap-3">
+            <svg 
+              className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" 
+              fill="currentColor" 
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+            >
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <h5 className="font-medium text-yellow-800 mb-1">Estimated Dates</h5>
+              <p className="text-sm text-yellow-700">
+                This information was recently added to our database. The dates shown are estimated
+                based on typical publication timelines.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
-};
-
-/* ✅ Helper: Single image URL fix */
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  if (url.startsWith("http://0.0.0.0:8001")) {
-    return url
-      .replace("http://0.0.0.0:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://127.0.0.1:8001")) {
-    return url
-      .replace("http://127.0.0.1:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://localhost:8001")) {
-    return url
-      .replace("http://localhost:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("/media/")) {
-    return `/cms-media${url.replace("/media/", "/")}`;
-  }
-
-  if (url.startsWith("/cms-media/")) {
-    return url.replace("/cms-media/media/", "/cms-media/");
-  }
-
-  return url;
-};
-
-/* =========================================================
-   ✅ Wagtail EMBED IMAGE FIX FUNCTIONS
-========================================================= */
-const extractEmbedImageIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/embedtype="image"[^>]*id="(\d+)"/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailImageUrl = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/images/${id}/`);
-    if (!res.ok) throw new Error(`Image ${id} fetch failed`);
-
-    const data = await res.json();
-
-    const url =
-      data?.meta?.download_url ||
-      data?.meta?.preview_url ||
-      data?.meta?.original?.url ||
-      data?.original?.url ||
-      null;
-
-    if (!url) return null;
-
-    if (url.startsWith("/")) return `${safeBaseUrl}${url}`;
-
-    return url;
-  } catch (err) {
-    console.error("fetchWagtailImageUrl error:", err);
-    return null;
-  }
-};
-
-const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
-  try {
-    if (!html) return "";
-
-    let updatedHtml = html;
-    const ids = extractEmbedImageIds(updatedHtml);
-
-    if (!ids.length) return updatedHtml;
-
-    for (const id of ids) {
-      const imgUrl = await fetchWagtailImageUrl(id, safeBaseUrl);
-
-      if (!imgUrl) {
-        updatedHtml = updatedHtml.replace(
-          new RegExp(
-            `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-            "g"
-          ),
-          ""
-        );
-        continue;
-      }
-
-      const proxiedUrl = getProxiedImageUrl(imgUrl);
-
-      updatedHtml = updatedHtml.replace(
-        new RegExp(
-          `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-          "g"
-        ),
-        `<img src="${proxiedUrl}" alt="Homeopathy Image" class="max-w-full h-auto rounded-xl" loading="lazy" width="800" height="450" />`
-      );
-    }
-
-    return updatedHtml;
-  } catch (err) {
-    console.error("replaceEmbedImages error:", err);
-    return html;
-  }
-};
-
-/* =========================================================
-   ✅ FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
-   Converts: <a linktype="page" id="75"> -> <a href="/homeopathy/slug">
-========================================================= */
-const extractInternalPageLinkIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<a[^>]*linktype="page"[^>]*id="(\d+)"[^>]*>/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailPageById = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/pages/${id}/`);
-    if (!res.ok) throw new Error("page fetch failed");
-    return await res.json();
-  } catch (err) {
-    return null;
-  }
-};
-
-const buildFrontendUrlFromWagtailPage = (pageData) => {
-  const type = (pageData?.meta?.type || "").toLowerCase();
-  const slug = pageData?.meta?.slug || pageData?.slug;
-
-  if (!slug) return "#";
-
-  if (type.includes("homeopathy")) return `/homeopathy/${slug}`;
-  if (type.includes("ayurveda")) return `/ayurveda/${slug}`;
-  if (type.includes("article")) return `/articles/${slug}`;
-  if (type.includes("news")) return `/news/${slug}`;
-  if (type.includes("condition")) return `/conditions/${slug}`;
-  if (type.includes("drug")) return `/drugs/${slug}`;
-  if (type.includes("wellness")) return `/wellness/${slug}`;
-  if (type.includes("yoga")) return `/yoga-exercise/${slug}`;
-
-  return `/${slug}`;
-};
-
-const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
-  if (!html) return "";
-
-  let updated = html;
-
-  // 1) Fix internal page links
-  const ids = extractInternalPageLinkIds(updated);
-
-  for (const id of ids) {
-    const pageData = await fetchWagtailPageById(id, safeBaseUrl);
-
-    const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
-
-    updated = updated.replace(
-      new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-      `<a$1$2href="${url}"$3>`
-    );
-  }
-
-  // 2) Fix document links
-  updated = updated.replace(
-    /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-    `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-  );
-
-  // 3) Remove leftover wagtail attributes
-  updated = updated.replace(/linktype="[^"]*"/g, "");
-  updated = updated.replace(/\s?id="\d+"/g, "");
-
-  return updated;
-};
-
-/* =========================================================
-   ✅ TOC Helpers
-========================================================= */
-const slugify = (text) =>
-  (text || "")
-    .toLowerCase()
-    .trim()
-    .replace(/<\/?[^>]+(>|$)/g, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-
-const extractHeadings = (html) => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<h([2-3])[^>]*>(.*?)<\/h\1>/gi)];
-  return matches.map((m) => ({
-    level: Number(m[1]),
-    text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
-  }));
-};
-
-const addHeadingIds = (html, headings) => {
-  if (!html || !headings?.length) return html;
-
-  let updated = html;
-  headings.forEach((h) => {
-    const id = slugify(h.text);
-
-    updated = updated.replace(
-      new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${id}">${h.text}</h${h.level}>`
-    );
-  });
-
-  return updated;
 };
 
 /* =========================================================
@@ -378,7 +398,7 @@ const processHtmlContent = async (html, safeBaseUrl) => {
 const TableOfContents = ({ headings = [] }) => {
   if (!headings.length) return null;
 
-  const scrollToHeading = (id) => {
+  const scrollToHeading = useCallback((id) => {
     if (typeof window === "undefined") return;
     const el = document.getElementById(id);
     if (!el) return;
@@ -386,26 +406,29 @@ const TableOfContents = ({ headings = [] }) => {
     const offset = 90;
     const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
     window.scrollTo({ top, behavior: "smooth" });
-  };
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl shadow-md p-6 sticky top-6">
       <h3 className="text-lg font-bold mb-4">On this page</h3>
-      <ul className="space-y-2 text-sm">
-        {headings.map((h, idx) => (
-          <li
-            key={`${h.text}-${idx}`}
-            className={h.level === 3 ? "ml-4" : ""}
-          >
-            <button
-              onClick={() => scrollToHeading(slugify(h.text))}
-              className="text-neutral-700 hover:text-primary hover:underline text-left w-full transition-colors"
+      <nav aria-label="Table of contents">
+        <ul className="space-y-2 text-sm">
+          {headings.map((h, idx) => (
+            <li
+              key={`${h.text}-${idx}`}
+              className={h.level === 3 ? "ml-4" : ""}
             >
-              {h.text}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <button
+                onClick={() => scrollToHeading(slugify(h.text))}
+                className="text-neutral-700 hover:text-green-600 hover:underline text-left w-full transition-colors"
+                aria-label={`Scroll to ${h.text}`}
+              >
+                {h.text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </div>
   );
 };
@@ -435,13 +458,14 @@ export default function HomeopathyTopicPage({
   processedDosage: initialProcessedDosage,
   processedPrecautions: initialProcessedPrecautions,
   processedReferences: initialProcessedReferences,
-  mainImageUrl: initialMainImageUrl 
+  mainImageUrl: initialMainImageUrl,
+  error
 }) {
   const router = useRouter();
   const { slug } = router.query;
 
   const [pageTopic, setPageTopic] = useState(initialTopic);
-  const [relatedTopics, setRelatedTopics] = useState(initialRelated);
+  const [relatedTopics, setRelatedTopics] = useState(initialRelated || []);
   const [loading, setLoading] = useState(!initialTopic);
   const [contentLoaded, setContentLoaded] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
@@ -453,6 +477,11 @@ export default function HomeopathyTopicPage({
   const [finalDosageHtml, setFinalDosageHtml] = useState(initialProcessedDosage || "");
   const [finalPrecautionsHtml, setFinalPrecautionsHtml] = useState(initialProcessedPrecautions || "");
   const [finalReferencesHtml, setFinalReferencesHtml] = useState(initialProcessedReferences || "");
+
+  const { publishedDate, updatedDate, lastReviewedDate, isFallback } = useMemo(
+    () => extractDatesFromTopic(pageTopic),
+    [pageTopic]
+  );
 
   const safeCMS = useMemo(() => getSafeCMSUrl(), []);
 
@@ -481,7 +510,7 @@ export default function HomeopathyTopicPage({
           { key: 'references', content: pageTopic.references, setter: setFinalReferencesHtml }
         ];
 
-        const results = await Promise.all(
+        const results = await Promise.allSettled(
           sections.map(async ({ key, content }) => {
             if (content) {
               try {
@@ -497,14 +526,17 @@ export default function HomeopathyTopicPage({
         );
 
         if (mounted) {
-          results.forEach(({ key, content }) => {
-            switch (key) {
-              case 'body': setFinalBodyHtml(content); break;
-              case 'remedy_details': setFinalRemedyDetailsHtml(content); break;
-              case 'indications': setFinalIndicationsHtml(content); break;
-              case 'dosage': setFinalDosageHtml(content); break;
-              case 'precautions': setFinalPrecautionsHtml(content); break;
-              case 'references': setFinalReferencesHtml(content); break;
+          results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              const { key, content } = result.value;
+              switch (key) {
+                case 'body': setFinalBodyHtml(content); break;
+                case 'remedy_details': setFinalRemedyDetailsHtml(content); break;
+                case 'indications': setFinalIndicationsHtml(content); break;
+                case 'dosage': setFinalDosageHtml(content); break;
+                case 'precautions': setFinalPrecautionsHtml(content); break;
+                case 'references': setFinalReferencesHtml(content); break;
+              }
             }
           });
           setContentLoaded(true);
@@ -565,27 +597,57 @@ export default function HomeopathyTopicPage({
     [finalBodyHtml, headings]
   );
 
+  // Fetch topic if not provided
   useEffect(() => {
     if (!initialTopic && slug) {
+      const fetchTopic = async () => {
+        try {
+          setLoading(true);
+          const baseUrl = getSafeCMSUrl();
+          const response = await fetch(`${baseUrl}/api/homeopathy/topics/${slug}/`);
+          if (!response.ok) throw new Error("Topic not found");
+          const data = await response.json();
+          setPageTopic(data);
+          
+          // Also fetch related topics
+          const relatedRes = await fetch(`${baseUrl}/api/homeopathy/topics/?limit=6`);
+          if (relatedRes.ok) {
+            const relatedData = await relatedRes.json();
+            const filtered = (relatedData.results || relatedData.items || relatedData)
+              .filter(t => t.slug !== slug)
+              .slice(0, 3);
+            setRelatedTopics(filtered);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
       fetchTopic();
     } else {
       setLoading(false);
     }
   }, [slug, initialTopic]);
 
-  const fetchTopic = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${safeCMS}/api/homeopathy/topics/${slug}/`);
-      if (!res.ok) throw new Error("Topic not found");
-      const data = await res.json();
-      setPageTopic(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center">
+        <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
+          <h1 className="text-2xl font-bold text-red-800 mb-3">
+            Error Loading Homeopathy Topic
+          </h1>
+          <p className="text-red-700 mb-6">{error}</p>
+          <Link
+            href="/homeopathy"
+            className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            ← Browse All Homeopathy Topics
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return <SkeletonLoader />;
@@ -613,16 +675,14 @@ export default function HomeopathyTopicPage({
   }
 
   // SEO values
-  const pageTitle = `${pageTopic.title} - Homeopathic Remedies`;
+  const pageTitle = `${pageTopic.title} - Homeopathic Remedies | Niinfomed`;
   const pageDescription =
-    pageTopic.summary || "Read homeopathic remedy details, dosage and uses.";
+    pageTopic.summary || `Learn about ${pageTopic.title} homeopathic remedy, its uses, dosage, and precautions.`;
 
   const pageUrl =
     typeof window !== "undefined"
       ? window.location.href
-      : `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}${
-          router.asPath
-        }`;
+      : `${process.env.NEXT_PUBLIC_SITE_URL || "https://niinfomed.com"}${router.asPath}`;
 
   const fallbackImage = "https://images.unsplash.com/photo-1542736667-069246bdbc6d?auto=format&fit=crop&w=1200&h=630&q=75";
   const ogImage = initialMainImageUrl || getProxiedImageUrl(pageTopic.image) || fallbackImage;
@@ -681,29 +741,47 @@ export default function HomeopathyTopicPage({
               alt: pageTopic.title,
             },
           ],
-          siteName: "HealthInfo",
+          siteName: "Niinfomed",
           type: "article",
+          article: {
+            publishedTime: publishedDate?.toISOString(),
+            modifiedTime: updatedDate?.toISOString(),
+            authors: pageTopic.author ? [pageTopic.author.name] : [],
+            tags: ['homeopathy', 'alternative medicine', ...(pageTopic.category ? [pageTopic.category.name] : [])],
+          },
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
         }}
       />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb */}
-        <nav className="text-sm text-neutral-500 mb-5 flex flex-wrap gap-1 above-fold">
+        <nav className="text-sm text-neutral-500 mb-5 flex flex-wrap gap-1 above-fold" aria-label="Breadcrumb">
           <Link href="/" className="hover:text-neutral-800 transition-colors">
             Home
           </Link>
-          <span>/</span>
+          <span aria-hidden="true">/</span>
           <Link href="/homeopathy" className="hover:text-neutral-800 transition-colors">
             Homeopathy
           </Link>
           {pageTopic.category?.name && (
             <>
-              <span>/</span>
-              <span className="text-neutral-700 font-medium">
+              <span aria-hidden="true">/</span>
+              <Link 
+                href={`/homeopathy/categories/${pageTopic.category.slug}`}
+                className="hover:text-neutral-800 transition-colors"
+              >
                 {pageTopic.category.name}
-              </span>
+              </Link>
             </>
           )}
+          <span aria-hidden="true">/</span>
+          <span className="text-neutral-700 font-medium" aria-current="page">
+            {pageTopic.title}
+          </span>
         </nav>
 
         <div className="grid lg:grid-cols-[1fr_320px] gap-8 lg:gap-10">
@@ -715,7 +793,7 @@ export default function HomeopathyTopicPage({
                 src={ogImage}
                 alt={pageTopic.title}
                 className="w-full h-full object-cover"
-                loading="eager" // ✅ Force eager loading for LCP
+                loading="eager"
                 decoding="async"
                 width={1200}
                 height={630}
@@ -751,6 +829,28 @@ export default function HomeopathyTopicPage({
                   Potency: {pageTopic.potency}
                 </span>
               )}
+              
+              {/* Compact Date Display */}
+              <div className="ml-auto hidden sm:block">
+                <DateDisplay
+                  publishedDate={publishedDate}
+                  updatedDate={updatedDate}
+                  lastReviewedDate={lastReviewedDate}
+                  isFallback={isFallback}
+                  compact={true}
+                />
+              </div>
+            </div>
+
+            {/* Mobile Compact Date Display */}
+            <div className="sm:hidden mb-4">
+              <DateDisplay
+                publishedDate={publishedDate}
+                updatedDate={updatedDate}
+                lastReviewedDate={lastReviewedDate}
+                isFallback={isFallback}
+                compact={true}
+              />
             </div>
 
             {/* Author / Reviewer */}
@@ -827,7 +927,8 @@ export default function HomeopathyTopicPage({
                   className="prose prose-base sm:prose-lg max-w-none
                              prose-img:w-full prose-img:h-auto
                              prose-img:rounded-xl prose-img:shadow
-                             prose-headings:scroll-mt-24"
+                             prose-headings:scroll-mt-24
+                             prose-a:text-green-600 prose-a:no-underline hover:prose-a:underline"
                   dangerouslySetInnerHTML={{ __html: bodyWithIds }}
                 />
               </div>
@@ -885,6 +986,16 @@ export default function HomeopathyTopicPage({
               </div>
             )}
 
+            {/* Timeline Section */}
+            <div className="mb-12">
+              <DateDisplay
+                publishedDate={publishedDate}
+                updatedDate={updatedDate}
+                lastReviewedDate={lastReviewedDate}
+                isFallback={isFallback}
+              />
+            </div>
+
             {/* Disclaimer */}
             <div className="mt-8 p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-xl">
               <p className="text-sm text-blue-700">
@@ -911,7 +1022,7 @@ export default function HomeopathyTopicPage({
                 <h3 className="text-xl sm:text-2xl font-bold mb-4">References</h3>
                 <div className="bg-neutral-50 border-l-4 border-green-500 p-6 rounded-r-lg">
                   <p className="text-sm text-neutral-600">
-                    Compiled by the HealthInfo Homeopathy Team
+                    Compiled by the Niinfomed Homeopathy Team
                   </p>
                 </div>
               </div>
@@ -1016,6 +1127,10 @@ export default function HomeopathyTopicPage({
                           decoding="async"
                           width={400}
                           height={240}
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = fallbackImage;
+                          }}
                         />
                       </div>
 
@@ -1035,6 +1150,20 @@ export default function HomeopathyTopicPage({
           </section>
         )}
       </div>
+
+      <style jsx global>{`
+        .prose a {
+          color: #16a34a;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose a:hover {
+          color: #15803d;
+        }
+        .scroll-mt-24 {
+          scroll-margin-top: 6rem;
+        }
+      `}</style>
     </>
   );
 }
@@ -1045,40 +1174,63 @@ export default function HomeopathyTopicPage({
 
 export async function getStaticPaths() {
   try {
-    const response = await axios.get(`${CMS_API_URL}/api/homeopathy/topics/`);
-    const paths = response.data.map((topic) => ({
-      params: { slug: topic.slug },
-    }));
-    return { paths, fallback: "blocking" };
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
+    
+    const response = await fetch(`${baseUrl}/api/homeopathy/topics/`);
+    const data = await response.json();
+    
+    const topics = data.results || data.items || data;
+    
+    const paths = topics
+      .filter(topic => topic && topic.slug)
+      .map((topic) => ({
+        params: { slug: topic.slug },
+      }));
+      
+    return { 
+      paths, 
+      fallback: "blocking" 
+    };
   } catch (error) {
     console.error("Error fetching homeopathy topics for paths:", error);
-    return { paths: [], fallback: "blocking" };
+    return { 
+      paths: [], 
+      fallback: "blocking" 
+    };
   }
 }
 
 export async function getStaticProps({ params }) {
   try {
     const start = Date.now();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     
     const [topicRes, allTopicsRes] = await Promise.allSettled([
-      axios.get(`${CMS_API_URL}/api/homeopathy/topics/${params.slug}`, {
-        params: { lang: "en" },
-      }),
-      axios.get(`${CMS_API_URL}/api/homeopathy/topics/`, {
-        params: { limit: 6, lang: "en" },
-      }),
+      fetch(`${baseUrl}/api/homeopathy/topics/${params.slug}/`),
+      fetch(`${baseUrl}/api/homeopathy/topics/?limit=6`),
     ]);
 
-    const topic = topicRes.status === "fulfilled" ? topicRes.value.data : null;
-    const allTopics =
-      allTopicsRes.status === "fulfilled" ? allTopicsRes.value.data : [];
+    let topic = null;
+    let allTopics = [];
+
+    if (topicRes.status === "fulfilled") {
+      topic = await topicRes.value.json();
+    }
+
+    if (allTopicsRes.status === "fulfilled") {
+      const data = await allTopicsRes.value.json();
+      allTopics = data.results || data.items || data;
+    }
 
     if (!topic) {
-      return { notFound: true, revalidate: 60 };
+      return { 
+        notFound: true, 
+        revalidate: 60 
+      };
     }
 
     // Server-side URL for processing
-    const safeCMS = CMS_API_URL;
+    const safeCMS = baseUrl;
     
     // Process content on server-side for better performance
     let processedBody = "";
@@ -1117,20 +1269,25 @@ export async function getStaticProps({ params }) {
       return { key, content: "" };
     });
 
-    const results = await Promise.all(processingPromises);
+    const results = await Promise.allSettled(processingPromises);
     
-    results.forEach(({ key, content }) => {
-      switch (key) {
-        case 'body': processedBody = content; break;
-        case 'remedy_details': processedRemedyDetails = content; break;
-        case 'indications': processedIndications = content; break;
-        case 'dosage': processedDosage = content; break;
-        case 'precautions': processedPrecautions = content; break;
-        case 'references': processedReferences = content; break;
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        const { key, content } = result.value;
+        switch (key) {
+          case 'body': processedBody = content; break;
+          case 'remedy_details': processedRemedyDetails = content; break;
+          case 'indications': processedIndications = content; break;
+          case 'dosage': processedDosage = content; break;
+          case 'precautions': processedPrecautions = content; break;
+          case 'references': processedReferences = content; break;
+        }
       }
     });
     
-    const relatedTopics = allTopics.filter((t) => t.slug !== params.slug);
+    const relatedTopics = allTopics
+      .filter((t) => t.slug !== params.slug)
+      .slice(0, 3);
     
     // Optimize main image URL
     const mainImageUrl = getProxiedImageUrl(topic.image);
@@ -1163,7 +1320,8 @@ export async function getStaticProps({ params }) {
         processedDosage: "",
         processedPrecautions: "",
         processedReferences: "",
-        mainImageUrl: ""
+        mainImageUrl: "",
+        error: "Failed to load homeopathy information. Please try again later."
       }, 
       revalidate: 60 
     };
