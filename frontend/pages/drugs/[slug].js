@@ -1,8 +1,8 @@
+// pages/drugs/[slug].js
 import { useRouter } from 'next/router';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import axios from 'axios';
-import { fetchDrugDetails } from '../../utils/api';
+import Image from 'next/image';
 import { NextSeo } from 'next-seo';
 import {
   DrugStructuredData,
@@ -11,349 +11,18 @@ import {
 } from '../../components/StructuredData';
 import CommentSection from '../../components/CommentSection';
 import ReferencesSection from '../../components/ReferencesSection';
-
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
-   ✅ FIX: Use Oracle CMS URL instead of localhost
-========================================================= */
-const getSafeApiUrl = () => {
-  // Use environment variable with fallback to Oracle CMS
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-
-  // Only adjust for client-side rendering when accessing from other devices
-  if (typeof window !== "undefined") {
-    const frontendHost = window.location.hostname;
-    
-    console.log("🌐 Frontend location:", { 
-      hostname: frontendHost, 
-      protocol: window.location.protocol,
-      port: window.location.port 
-    });
-
-    // For external access (mobile, tablet, other devices)
-    if (frontendHost !== "localhost" && 
-        frontendHost !== "127.0.0.1" && 
-        frontendHost !== "0.0.0.0") {
-      
-      // Keep using Oracle CMS URL for external access
-      console.log("🔄 Using Oracle CMS URL for external access:", base);
-    } else {
-      // For local development, replace problematic addresses
-      base = base
-        .replace("0.0.0.0", frontendHost)
-        .replace("127.0.0.1", frontendHost)
-        .replace("localhost", frontendHost);
-    }
-  }
-
-  console.log("✅ Safe API URL:", base);
-  return base;
-};
-
-/* =========================================================
-   ✅ MEDIA URL FIX FUNCTIONS - Updated for Oracle CMS
-========================================================= */
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
-  }
-
-  // Handle localhost patterns
-  const replacements = {
-    'http://0.0.0.0:8001': '/cms-media',
-    'http://127.0.0.1:8001': '/cms-media',
-    'http://localhost:8001': '/cms-media',
-    '/media/': '/cms-media/'
-  };
-
-  let newUrl = url;
-  
-  Object.entries(replacements).forEach(([pattern, replacement]) => {
-    if (newUrl.includes(pattern)) {
-      newUrl = newUrl.replace(pattern, replacement);
-    }
-  });
-
-  newUrl = newUrl.replace(/\/cms-media\/media\//g, '/cms-media/');
-  
-  return newUrl;
-};
-
-const fixMediaUrls = (html) => {
-  if (!html) return '';
-
-  const patterns = [
-    [/(src="|src=')https?:\/\/161\.118\.167\.107\/media\//g, '$1/cms-media/'],
-    [/(src="|src=')http:\/\/0\.0\.0\.0:8001\/media\//g, '$1/cms-media/'],
-    [/(src="|src=')http:\/\/127\.0\.0\.1:8001\/media\//g, '$1/cms-media/'],
-    [/(src="|src=')http:\/\/localhost:8001\/media\//g, '$1/cms-media/'],
-    [/(src="|src=')\/media\//g, '$1/cms-media/'],
-    [/(srcset="|srcset=')\/media\//g, '$1/cms-media/']
-  ];
-
-  let fixedHtml = html;
-  patterns.forEach(([pattern, replacement]) => {
-    fixedHtml = fixedHtml.replace(pattern, replacement);
-  });
-
-  return fixedHtml.replace(/\/cms-media\/media\//g, '/cms-media/');
-};
-
-/* =========================================================
-   ✅ WAGTAIL URL TRANSFORMATION FUNCTIONS
-========================================================= */
-
-const transformWagtailUrlToNextRoute = (wagtailUrl = "") => {
-  if (!wagtailUrl || wagtailUrl === "#") return "#";
-  
-  console.log("🔄 Transforming Wagtail URL:", wagtailUrl);
-  
-  // Remove domain and protocol to get just the path
-  let path = wagtailUrl;
-  
-  // Remove http://localhost:5000/ or similar domains
-  path = path.replace(/https?:\/\/[^\/]+\//, '/');
-  
-  // Ensure it starts with /
-  if (!path.startsWith('/')) {
-    path = '/' + path;
-  }
-  
-  // Drug-specific patterns
-  const drugMappings = {
-    '/all-drugs-a-z-pages/all-drugs-pages/drugs/': '/drugs/',
-    '/all-drugs-pages/drugs/': '/drugs/',
-    '/all-drugs-a-z-pages/': '/drugs/',
-    '/all-drugs/': '/drugs/',
-  };
-  
-  // Check for drug pattern matches
-  for (const [wagtailPattern, nextRoute] of Object.entries(drugMappings)) {
-    if (path.startsWith(wagtailPattern)) {
-      const slug = path.replace(wagtailPattern, '');
-      if (slug) {
-        const finalRoute = `${nextRoute}${slug}`;
-        console.log(`✅ Drug pattern match: ${path} → ${finalRoute}`);
-        return finalRoute;
-      }
-    }
-  }
-  
-  // If it's already a clean route, return it
-  if (path.startsWith('/drugs/')) {
-    console.log(`✅ Already clean drug route: ${path}`);
-    return path;
-  }
-  
-  console.warn(`⚠️ Could not transform URL: ${wagtailUrl}`);
-  return "#";
-};
-
-const extractInternalPageLinkIds = (html = "") => {
-  if (!html) return [];
-
-  const matches = [
-    ...html.matchAll(
-      /<a[^>]*(?:linktype="page"[^>]*id="(\d+)"|id="(\d+)"[^>]*linktype="page")[^>]*>/g
-    ),
-  ];
-
-  return matches.map(m => Number(m[1] || m[2]));
-};
-
-const extractAllHrefUrls = (html = "") => {
-  if (!html) return [];
-  
-  const matches = [...html.matchAll(/href="([^"]*)"/g)];
-  return matches.map(m => m[1]);
-};
-
-const fetchWagtailPageById = async (id, apiBaseUrl) => {
-  try {
-    console.log(`🔍 Fetching Wagtail page for ID: ${id} from ${apiBaseUrl}`);
-    
-    const url = `${apiBaseUrl}/api/v2/pages/${id}/`;
-    
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!res.ok) {
-      console.warn(`⚠️ Page fetch failed for ID ${id}: ${res.status}`);
-      return null;
-    }
-    
-    return await res.json();
-  } catch (err) {
-    console.error("Error fetching Wagtail page:", err);
-    return null;
-  }
-};
-
-const buildFrontendUrlFromWagtailPage = (pageData) => {
-  if (!pageData) return "#";
-
-  const type = (pageData?.meta?.type || "").toLowerCase();
-  const slug = pageData?.meta?.slug || pageData?.slug;
-  const title = pageData?.title || "";
-
-  console.log("📄 Building URL from:", { type, slug, title: title.substring(0, 50) });
-
-  if (!slug) {
-    console.warn("❌ No slug found in page data");
-    return "#";
-  }
-
-  // Check if slug is a full URL
-  if (slug.includes('http://') || slug.includes('https://') || slug.includes('localhost')) {
-    const transformed = transformWagtailUrlToNextRoute(slug);
-    if (transformed !== "#") {
-      return transformed;
-    }
-  }
-
-  // Fallback to type-based mapping
-  let category = "";
-  if (type.includes("drug")) {
-    category = "drugs";
-  } else if (type.includes("homeopathy")) {
-    category = "homeopathy";
-  } else if (type.includes("ayurveda")) {
-    category = "ayurveda";
-  } else if (type.includes("article")) {
-    category = "articles";
-  } else if (type.includes("news")) {
-    category = "news";
-  } else if (type.includes("condition")) {
-    category = "conditions";
-  } else if (type.includes("wellness")) {
-    category = "wellness";
-  } else if (type.includes("yoga")) {
-    category = "yoga-exercise";
-  }
-
-  const slugParts = slug.split('/').filter(p => p);
-  const contentSlug = slugParts[slugParts.length - 1] || "";
-
-  if (category && contentSlug) {
-    const route = `/${category}/${contentSlug}`;
-    console.log(`🎯 Built route from type: ${route}`);
-    return route;
-  }
-
-  console.warn(`❌ Could not build route for:`, { type, slug });
-  return "#";
-};
-
-const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
-  if (!html) return html;
-
-  console.log("🛠️ Starting Wagtail link fix...");
-  
-  let updatedHtml = html;
-
-  try {
-    // Fix links with linktype="page"
-    const pageIds = extractInternalPageLinkIds(updatedHtml);
-    
-    if (pageIds.length > 0) {
-      console.log(`🔗 Found ${pageIds.length} page link IDs`);
-      
-      const pageMap = new Map();
-      const fetchPromises = pageIds.map(async (id) => {
-        const pageData = await fetchWagtailPageById(id, apiBaseUrl);
-        if (pageData) {
-          pageMap.set(id, pageData);
-        }
-      });
-
-      await Promise.all(fetchPromises);
-
-      pageIds.forEach((id) => {
-        const pageData = pageMap.get(id);
-        const frontendUrl = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
-
-        const regex = new RegExp(
-          `(<a[^>]*(?:linktype="page"[^>]*id="${id}"|id="${id}"[^>]*linktype="page")[^>]*?)>`,
-          "g"
-        );
-
-        updatedHtml = updatedHtml.replace(regex, `$1 href="${frontendUrl}">`);
-      });
-    }
-
-    // Fix document links
-    updatedHtml = updatedHtml.replace(
-      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-      `<a$1href="${apiBaseUrl}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-    );
-
-    // Transform raw wagtail URLs
-    const allHrefs = extractAllHrefUrls(updatedHtml);
-    const wagtailHrefs = allHrefs.filter(href => 
-      href.includes('all-drugs') || 
-      href.includes('all-') || 
-      href.includes('localhost') || 
-      href.includes('127.0.0.1') ||
-      href.includes('0.0.0.0')
-    );
-    
-    if (wagtailHrefs.length > 0) {
-      wagtailHrefs.forEach(wagtailUrl => {
-        const transformedUrl = transformWagtailUrlToNextRoute(wagtailUrl);
-        
-        if (transformedUrl !== "#" && transformedUrl !== wagtailUrl) {
-          const escapedUrl = wagtailUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`href="${escapedUrl}"`, 'g');
-          updatedHtml = updatedHtml.replace(regex, `href="${transformedUrl}"`);
-        }
-      });
-    }
-
-    // Clean up leftover Wagtail attributes
-    updatedHtml = updatedHtml.replace(/linktype="[^"]*"/g, '');
-    updatedHtml = updatedHtml.replace(/\s?parent-id="\d+"/g, '');
-    updatedHtml = updatedHtml.replace(/\s?id="\d+"/g, '');
-    
-    // Make external links open in new tab
-    updatedHtml = updatedHtml.replace(
-      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
-      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
-    );
-
-    return updatedHtml;
-  } catch (error) {
-    console.error("❌ Error in fixWagtailInternalLinks:", error);
-    return html;
-  }
-};
+import {
+  fetchDrugBySlug,
+  fetchDrugPaths,
+  getProxiedImageUrl,
+  fixWagtailInternalLinks,
+  replaceEmbedImages,
+  tryEndpoints,
+  getSafeCMSUrl,
+  parseDateSafe,
+  formatDateDisplay,
+  getTimeAgo
+} from '../../utils/api';
 
 /* =========================================================
    ✅ DATE FUNCTIONS
@@ -361,13 +30,10 @@ const fixWagtailInternalLinks = async (html = "", apiBaseUrl = "") => {
 
 const createFallbackDates = () => {
   const now = new Date();
-  
   const publishedDate = new Date(now);
   publishedDate.setDate(now.getDate() - 60);
-
   const updatedDate = new Date(now);
   updatedDate.setDate(now.getDate() - 30);
-
   const lastReviewedDate = new Date(now);
   lastReviewedDate.setDate(now.getDate() - 45);
 
@@ -377,25 +43,6 @@ const createFallbackDates = () => {
     lastReviewed: lastReviewedDate,
     isFallback: true
   };
-};
-
-const parseDateSafe = (dateString) => {
-  if (!dateString || typeof dateString !== 'string') return null;
-
-  const dateFormats = [
-    dateString,
-    dateString.replace(' ', 'T') + 'Z',
-    dateString.split('T')[0],
-  ];
-
-  for (const format of dateFormats) {
-    const date = new Date(format);
-    if (!isNaN(date.getTime())) {
-      return date;
-    }
-  }
-
-  return null;
 };
 
 const extractDatesFromDrug = (drug) => {
@@ -460,60 +107,6 @@ const extractDatesFromDrug = (drug) => {
     lastReviewedDate: finalReviewedDate,
     isFallback: false
   };
-};
-
-const formatDateDisplay = (date, includeTime = false) => {
-  if (!date) return "Date not available";
-
-  try {
-    const options = {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: 'UTC',
-      ...(includeTime && { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        timeZoneName: 'short'
-      })
-    };
-
-    return date.toLocaleDateString('en-US', options);
-  } catch (error) {
-    return "Date error";
-  }
-};
-
-const getTimeAgo = (date) => {
-  if (!date) return "";
-
-  try {
-    const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
-
-    if (seconds < 0) return "in the future";
-    if (seconds < 60) return "just now";
-
-    const intervals = [
-      { label: 'year', seconds: 31536000 },
-      { label: 'month', seconds: 2592000 },
-      { label: 'week', seconds: 604800 },
-      { label: 'day', seconds: 86400 },
-      { label: 'hour', seconds: 3600 },
-      { label: 'minute', seconds: 60 }
-    ];
-
-    for (const interval of intervals) {
-      const count = Math.floor(seconds / interval.seconds);
-      if (count >= 1) {
-        return `${count} ${interval.label}${count !== 1 ? 's' : ''} ago`;
-      }
-    }
-
-    return `${seconds} seconds ago`;
-  } catch (error) {
-    return "";
-  }
 };
 
 const isDrugUpdated = (publishedDate, updatedDate) => {
@@ -783,6 +376,44 @@ const DrugPageSkeleton = () => (
 );
 
 /* =========================================================
+   ✅ Table of Contents Component
+========================================================= */
+const TableOfContents = ({ sections }) => {
+  if (!sections || sections.length === 0) return null;
+
+  const scrollToSection = useCallback((id) => {
+    if (typeof window === "undefined") return;
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const offset = 90;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 sticky top-24">
+      <h3 className="text-lg font-bold mb-3">On this page</h3>
+      <nav aria-label="Table of contents">
+        <ul className="space-y-2 text-sm">
+          {sections.map((section) => (
+            <li key={section.id}>
+              <button
+                onClick={() => scrollToSection(section.id)}
+                className="text-gray-700 hover:text-blue-600 hover:underline text-left w-full transition-colors"
+                aria-label={`Scroll to ${section.title}`}
+              >
+                {section.title}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </div>
+  );
+};
+
+/* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 
@@ -801,7 +432,7 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     warnings: ''
   });
 
-  const safeApiUrl = useMemo(() => getSafeApiUrl(), []);
+  const safeApiUrl = useMemo(() => getSafeCMSUrl(), []);
 
   const { publishedDate, updatedDate, lastReviewedDate, isFallback } = useMemo(
     () => extractDatesFromDrug(drug),
@@ -817,6 +448,22 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     
     return parts.length > 0 ? parts.join(' ') : drug.title || 'Unnamed Drug';
   }, [drug]);
+
+  // Define content sections for TOC
+  const contentSections = useMemo(() => {
+    const sections = [
+      { id: "overview", title: "Overview", content: fixedContent.overview },
+      { id: "uses", title: "Uses & Indications", content: fixedContent.uses },
+      { id: "dosage", title: "Dosage & Administration", content: fixedContent.dosage },
+      { id: "side-effects", title: "Side Effects & Precautions", content: fixedContent.sideEffects },
+    ];
+    
+    if (fixedContent.warnings) {
+      sections.push({ id: "warnings", title: "Important Warnings", content: fixedContent.warnings });
+    }
+    
+    return sections.filter(section => section.content && section.content.trim() !== '');
+  }, [fixedContent]);
 
   const seoData = useMemo(() => {
     const baseUrl = typeof window !== 'undefined' 
@@ -855,55 +502,15 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
     };
   }, [drug, drugName, slug, publishedDate, updatedDate]);
 
+  // Fetch drug data if not provided
   useEffect(() => {
     if (!initialDrug && slug) {
       const loadDrug = async () => {
         setLoading(true);
         try {
-          console.log("📡 Fetching drug data from:", `${safeApiUrl}/api/drugs/${slug}/`);
+          console.log("📡 Fetching drug data from Oracle CMS...");
+          const drugData = await fetchDrugBySlug(slug);
           
-          // Try multiple endpoints
-          const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-          const endpoints = [
-            `${baseUrl}/api/drugs/${slug}/`,
-            `${baseUrl}/api/drugs/${slug}`,
-            `${baseUrl}/api/drugs/detail/${slug}/`,
-            `${baseUrl}/api/v2/pages/?slug=${slug}&type=drugs.DrugPage`,
-          ];
-          
-          let drugData = null;
-          
-          for (const endpoint of endpoints) {
-            try {
-              const response = await fetch(endpoint, {
-                headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-              });
-
-              if (response.ok) {
-                const data = await response.json();
-                
-                // Handle different response formats
-                if (data.items && data.items.length > 0) {
-                  drugData = data.items[0];
-                } else if (data.results && data.results.length > 0) {
-                  drugData = data.results[0];
-                } else {
-                  drugData = data;
-                }
-                
-                if (drugData) {
-                  console.log(`✅ Found drug at: ${endpoint}`);
-                  break;
-                }
-              }
-            } catch (err) {
-              console.log(`❌ Endpoint failed: ${endpoint}`);
-            }
-          }
-
           if (drugData) {
             setDrug(drugData);
             setError(null);
@@ -920,8 +527,9 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 
       loadDrug();
     }
-  }, [slug, initialDrug, safeApiUrl]);
+  }, [slug, initialDrug]);
 
+  // Fix content links and media
   useEffect(() => {
     if (!drug) return;
 
@@ -937,23 +545,23 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 
         const fixedSections = await Promise.all(
           Object.entries(contentSections).map(async ([key, content]) => {
-            const mediaFixed = fixMediaUrls(content);
-            const linkFixed = await fixWagtailInternalLinks(mediaFixed, safeApiUrl);
-            return [key, linkFixed];
+            const withImages = await replaceEmbedImages(content, safeApiUrl);
+            const withLinks = await fixWagtailInternalLinks(withImages, safeApiUrl);
+            return [key, withLinks];
           })
         );
 
         setFixedContent(Object.fromEntries(fixedSections));
       } catch (error) {
         console.error('Error fixing content:', error);
-        const fallbackSections = {
-          overview: fixMediaUrls(drug.overview || ''),
-          uses: fixMediaUrls(drug.uses || ''),
-          dosage: fixMediaUrls(drug.dosage || ''),
-          sideEffects: fixMediaUrls(drug.side_effects || ''),
-          warnings: fixMediaUrls(drug.warnings || '')
-        };
-        setFixedContent(fallbackSections);
+        // Fallback to raw content
+        setFixedContent({
+          overview: drug.overview || '',
+          uses: drug.uses || '',
+          dosage: drug.dosage || '',
+          sideEffects: drug.side_effects || '',
+          warnings: drug.warnings || ''
+        });
       }
     };
 
@@ -1056,7 +664,7 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
         <div className="max-w-6xl mx-auto">
           {/* Breadcrumb Navigation */}
           <nav className="text-sm text-gray-500 mb-6" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-2">
+            <ol className="flex items-center space-x-2 flex-wrap">
               <li>
                 <Link 
                   href="/" 
@@ -1077,7 +685,7 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
                 </Link>
               </li>
               <li className="text-gray-400">/</li>
-              <li className="text-gray-700 font-medium" aria-current="page">
+              <li className="text-gray-700 font-medium truncate max-w-[200px]" aria-current="page">
                 {drugName}
               </li>
             </ol>
@@ -1085,7 +693,7 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 
           {/* Main Header */}
           <header className="mb-8">
-            <h1 className="text-4xl font-extrabold tracking-tight mb-3 text-gray-900">
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3 text-gray-900">
               {drugName}
             </h1>
 
@@ -1122,14 +730,69 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
                 lastReviewedDate={lastReviewedDate}
                 isFallback={isFallback}
                 compact={true}
-                className="ml-auto"
+                className="ml-auto hidden sm:flex"
+              />
+            </div>
+            
+            {/* Mobile Compact Date Display */}
+            <div className="sm:hidden mb-4">
+              <DateDisplay
+                publishedDate={publishedDate}
+                updatedDate={updatedDate}
+                lastReviewedDate={lastReviewedDate}
+                isFallback={isFallback}
+                compact={true}
               />
             </div>
           </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <main className="lg:col-span-2 space-y-8" id="main-content">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Sidebar - Left Column */}
+            <aside className="lg:col-span-1 order-2 lg:order-1">
+              <div className="space-y-6 lg:sticky lg:top-24">
+                <TableOfContents sections={contentSections} />
+                
+                {/* Quick Facts Card (Mobile/Desktop) */}
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <h3 className="text-xl font-semibold mb-4 border-b pb-2">Quick Facts</h3>
+                  <div className="space-y-3">
+                    {drug.generic_name && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 text-sm">Generic Name</h4>
+                        <p className="text-gray-900">{drug.generic_name}</p>
+                      </div>
+                    )}
+                    {drug.brand_names && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 text-sm">Brand Names</h4>
+                        <p className="text-gray-900">{drug.brand_names}</p>
+                      </div>
+                    )}
+                    {drug.drug_class && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 text-sm">Drug Class</h4>
+                        <p className="text-gray-900">{drug.drug_class}</p>
+                      </div>
+                    )}
+                    {drug.dosage_form && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 text-sm">Dosage Form</h4>
+                        <p className="text-gray-900">{drug.dosage_form}</p>
+                      </div>
+                    )}
+                    {drug.manufacturer && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 text-sm">Manufacturer</h4>
+                        <p className="text-gray-900">{drug.manufacturer}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            {/* Main Content - Middle Columns */}
+            <main className="lg:col-span-2 order-1 lg:order-2 space-y-8" id="main-content">
               {/* Author & Reviewer Info */}
               {(drug.author || drug.reviewer) && (
                 <div className="bg-white rounded-xl shadow-md p-6">
@@ -1191,91 +854,54 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
                 </div>
               )}
 
-              {/* Date Timeline Section */}
-              <section className="bg-white rounded-xl shadow-md p-6" aria-label="Information timeline">
-                <h2 className="text-xl font-semibold mb-4">Information Timeline</h2>
-                <DateDisplay
-                  publishedDate={publishedDate}
-                  updatedDate={updatedDate}
-                  lastReviewedDate={lastReviewedDate}
-                  isFallback={isFallback}
-                />
-              </section>
+              {/* Date Timeline Section (Desktop) */}
+              <div className="hidden lg:block">
+                <section className="bg-white rounded-xl shadow-md p-6" aria-label="Information timeline">
+                  <h2 className="text-xl font-semibold mb-4">Information Timeline</h2>
+                  <DateDisplay
+                    publishedDate={publishedDate}
+                    updatedDate={updatedDate}
+                    lastReviewedDate={lastReviewedDate}
+                    isFallback={isFallback}
+                  />
+                </section>
+              </div>
 
               {/* Content Sections */}
-              {[
-                { title: "Overview", content: fixedContent.overview, id: "overview" },
-                { title: "Uses & Indications", content: fixedContent.uses, id: "uses" },
-                { title: "Dosage & Administration", content: fixedContent.dosage, id: "dosage" },
-                { title: "Side Effects & Precautions", content: fixedContent.sideEffects, id: "side-effects" },
-              ].map((section) => (
+              {contentSections.map((section) => (
                 <section 
                   key={section.id} 
                   id={section.id}
-                  className="bg-white rounded-xl shadow-md p-6"
+                  className="bg-white rounded-xl shadow-md p-6 scroll-mt-24"
                 >
                   <h2 className="text-2xl font-bold mb-6 border-b pb-3">
                     {section.title}
                   </h2>
                   <div
-                    className="prose prose-lg max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: section.content || 
-                        `<p class="text-gray-500 italic">${section.title.toLowerCase()} information for ${drugName} is not available at this time.</p>`
-                    }}
+                    className="prose prose-lg max-w-none prose-headings:scroll-mt-24 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline"
+                    dangerouslySetInnerHTML={{ __html: section.content }}
                   />
                 </section>
               ))}
+
+              {/* Mobile Timeline Section */}
+              <div className="lg:hidden">
+                <section className="bg-white rounded-xl shadow-md p-6" aria-label="Information timeline">
+                  <h2 className="text-xl font-semibold mb-4">Information Timeline</h2>
+                  <DateDisplay
+                    publishedDate={publishedDate}
+                    updatedDate={updatedDate}
+                    lastReviewedDate={lastReviewedDate}
+                    isFallback={isFallback}
+                  />
+                </section>
+              </div>
             </main>
 
-            {/* Sidebar */}
-            <aside className="space-y-8" aria-label="Additional information">
-              {/* Quick Facts Card */}
-              <div className="bg-white rounded-xl shadow-md p-6 sticky top-6">
-                <h3 className="text-xl font-semibold mb-6 border-b pb-3">Quick Facts</h3>
-
-                <div className="space-y-4">
-                  {[
-                    { label: "Generic Name", value: drug.generic_name },
-                    { label: "Brand Names", value: drug.brand_names },
-                    { label: "Drug Class", value: drug.drug_class },
-                    { label: "Dosage Form", value: drug.dosage_form },
-                    { label: "Manufacturer", value: drug.manufacturer },
-                  ].filter(item => item.value).map((item, index) => (
-                    <div key={index}>
-                      <h4 className="font-medium text-gray-700 mb-1">{item.label}</h4>
-                      <p className="text-gray-900">{item.value}</p>
-                    </div>
-                  ))}
-
-                  {/* Date Summary */}
-                  {(publishedDate || updatedDate || lastReviewedDate) && (
-                    <div className="pt-4 border-t border-gray-200">
-                      <h4 className="font-medium text-gray-700 mb-2">Information Dates</h4>
-                      <div className="space-y-2 text-sm">
-                        {[
-                          { label: "Published", date: publishedDate },
-                          { label: "Updated", date: updatedDate },
-                          { label: "Reviewed", date: lastReviewedDate },
-                        ].filter(item => item.date).map((item, index) => (
-                          <div key={index} className="flex justify-between">
-                            <span className="text-gray-600">{item.label}:</span>
-                            <time 
-                              dateTime={item.date.toISOString()} 
-                              className="font-medium"
-                            >
-                              {formatDateDisplay(item.date)}
-                            </time>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+            {/* Right Sidebar - Additional Info */}
+            <aside className="lg:col-span-1 order-3 space-y-6">
               {/* Warnings Card */}
-              {drug.warnings && (
+              {fixedContent.warnings && (
                 <div 
                   className="bg-red-50 border border-red-200 rounded-xl p-6"
                   role="alert"
@@ -1312,13 +938,29 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
           </div>
 
           {/* Comments Section */}
-          <CommentSection
-            contentType="drug"
-            contentSlug={drug.slug}
-            pageTitle={drugName}
-          />
+          <div className="mt-12">
+            <CommentSection
+              contentType="drug"
+              contentSlug={drug.slug}
+              pageTitle={drugName}
+            />
+          </div>
         </div>
       </div>
+
+      <style jsx global>{`
+        .prose a {
+          color: #2563eb;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose a:hover {
+          color: #1d4ed8;
+        }
+        .scroll-mt-24 {
+          scroll-margin-top: 6rem;
+        }
+      `}</style>
     </>
   );
 }
@@ -1329,60 +971,17 @@ export default function DrugPage({ drug: initialDrug, error: initialError }) {
 
 export async function getStaticPaths() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const paths = await fetchDrugPaths();
     
-    const endpoints = [
-      `${baseUrl}/api/drugs/`,
-      `${baseUrl}/api/drugs`,
-      `${baseUrl}/api/drugs/index/`,
-    ];
+    const formattedPaths = paths
+      .filter(slug => slug && typeof slug === 'string')
+      .map(slug => ({
+        params: { slug },
+      }));
 
-    console.log("📡 Fetching drug paths from Oracle CMS...");
-    
-    let paths = [];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { 
-          timeout: 10000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          paths = data
-            .filter(drug => drug?.slug && typeof drug.slug === 'string')
-            .map((drug) => ({
-              params: { slug: drug.slug },
-            }));
-          break;
-        } else if (data.results) {
-          paths = data.results
-            .filter(drug => drug?.slug && typeof drug.slug === 'string')
-            .map((drug) => ({
-              params: { slug: drug.slug },
-            }));
-          break;
-        } else if (data.items) {
-          paths = data.items
-            .filter(drug => drug?.slug && typeof drug.slug === 'string')
-            .map((drug) => ({
-              params: { slug: drug.slug },
-            }));
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
-
-    console.log(`✅ Generated ${paths.length} static paths for drugs`);
+    console.log(`✅ Generated ${formattedPaths.length} static paths for drugs`);
     return {
-      paths,
+      paths: formattedPaths,
       fallback: 'blocking',
     };
   } catch (error) {
@@ -1400,53 +999,11 @@ export async function getStaticProps({ params }) {
   }
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-    const slug = params.slug;
-    
-    console.log(`📡 Fetching drug ${slug} from Oracle CMS`);
-
-    // Try multiple endpoints for drug detail
-    const endpoints = [
-      `${baseUrl}/api/drugs/${slug}/`,
-      `${baseUrl}/api/drugs/${slug}`,
-      `${baseUrl}/api/drugs/detail/${slug}/`,
-      `${baseUrl}/api/v2/pages/?slug=${slug}&type=drugs.DrugPage`,
-    ];
-
-    let drug = null;
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { 
-          timeout: 10000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (response.data) {
-          // Handle different response formats
-          if (response.data.items && response.data.items.length > 0) {
-            drug = response.data.items[0];
-          } else if (response.data.results && response.data.results.length > 0) {
-            drug = response.data.results[0];
-          } else {
-            drug = response.data;
-          }
-          
-          if (drug) {
-            console.log(`✅ Found drug at: ${endpoint}`);
-            break;
-          }
-        }
-      } catch (err) {
-        console.log(`❌ Failed: ${endpoint}`);
-      }
-    }
+    console.log(`📡 Fetching drug ${params.slug} from Oracle CMS`);
+    const drug = await fetchDrugBySlug(params.slug);
 
     if (!drug) {
-      console.warn(`Drug not found for slug: ${slug}`);
+      console.warn(`Drug not found for slug: ${params.slug}`);
       return { notFound: true, revalidate: 60 };
     }
 
@@ -1455,7 +1012,7 @@ export async function getStaticProps({ params }) {
         drug,
         error: null,
       },
-      revalidate: 3600,
+      revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
     console.error(`Error fetching drug ${params.slug}:`, error);
