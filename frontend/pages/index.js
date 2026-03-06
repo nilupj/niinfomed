@@ -1,7 +1,6 @@
+// pages/index.js
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import axios from 'axios';
 import { NextSeo } from 'next-seo';
 import FeaturedArticle from '../components/FeaturedArticle';
 import ArticleCard from '../components/ArticleCard';
@@ -18,31 +17,8 @@ import {
   fetchYogaTopics, 
   fetchVideos, 
   fetchSocialPosts, 
-  getImageUrl,
   getProxiedImageUrl
 } from '../utils/api';
-
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
 
 /* =========================================================
    ✅ PERFORMANCE OPTIMIZATIONS
@@ -70,10 +46,8 @@ const getOptimizedImageUrl = (url) => {
   if (!url) return null;
   
   try {
-    // Pehle proxy URL le lo
     const proxiedUrl = getProxiedImageUrl(url);
     
-    // Unsplash images ke liye optimization
     if (proxiedUrl.includes('unsplash.com')) {
       const separator = proxiedUrl.includes('?') ? '&' : '?';
       return `${proxiedUrl}${separator}w=800&q=75&auto=format`;
@@ -94,9 +68,7 @@ const VideoSection = () => {
   useEffect(() => {
     const fetchVideoData = async () => {
       try {
-        const data = await fetchWithCache('videos', () => 
-          fetchVideos(6)
-        );
+        const data = await fetchWithCache('videos', () => fetchVideos(6));
         setVideos(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching videos:', error);
@@ -146,7 +118,7 @@ const VideoSection = () => {
       ) : videos.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {videos.map((video) => (
-            <Link key={video.id} href={`/videos/${video.slug}`} className="group">
+            <Link key={video.id || video.slug} href={`/videos/${video.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
                   <ImageWithFallback
@@ -202,9 +174,7 @@ const SocialMediaSection = () => {
   useEffect(() => {
     const fetchSocialData = async () => {
       try {
-        const data = await fetchWithCache('social_posts', () => 
-          fetchSocialPosts(6)
-        );
+        const data = await fetchWithCache('social_posts', () => fetchSocialPosts(6));
         setPosts(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching social posts:', error);
@@ -285,10 +255,7 @@ const SocialMediaSection = () => {
   );
 };
 
-/* =========================================================
-   ✅ OPTIMIZED SECTION COMPONENTS
-========================================================= */
-
+// ✅ Optimized Homeopathy Section Component
 const HomeopathySection = () => {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -296,9 +263,7 @@ const HomeopathySection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        const data = await fetchWithCache('homeopathy_topics', () => 
-          fetchHomeopathyTopics(6)
-        );
+        const data = await fetchWithCache('homeopathy_topics', () => fetchHomeopathyTopics(6));
         setTopics(data || []);
       } catch (error) {
         console.error('Error fetching homeopathy topics:', error);
@@ -341,7 +306,7 @@ const HomeopathySection = () => {
       ) : topics.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {topics.map((topic) => (
-            <Link key={topic.id} href={`/homeopathy/${topic.slug}`} className="group">
+            <Link key={topic.id || topic.slug} href={`/homeopathy/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
                   <ImageWithFallback
@@ -377,6 +342,7 @@ const HomeopathySection = () => {
   );
 };
 
+// ✅ Optimized Ayurveda Section Component
 const AyurvedaSection = () => {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -384,9 +350,7 @@ const AyurvedaSection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        const data = await fetchWithCache('ayurveda_topics', () => 
-          fetchAyurvedaTopics(6)
-        );
+        const data = await fetchWithCache('ayurveda_topics', () => fetchAyurvedaTopics(6));
         setTopics(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching ayurveda topics:', error);
@@ -429,7 +393,7 @@ const AyurvedaSection = () => {
       ) : topics.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {topics.map((topic) => (
-            <Link key={topic.id} href={`/ayurveda/${topic.slug}`} className="group">
+            <Link key={topic.id || topic.slug} href={`/ayurveda/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
                   <ImageWithFallback
@@ -465,6 +429,7 @@ const AyurvedaSection = () => {
   );
 };
 
+// ✅ Optimized Yoga Section Component
 const YogaSection = () => {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -472,9 +437,7 @@ const YogaSection = () => {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        const data = await fetchWithCache('yoga_topics', () => 
-          fetchYogaTopics(6)
-        );
+        const data = await fetchWithCache('yoga_topics', () => fetchYogaTopics(6));
         setTopics(data || []);
       } catch (error) {
         console.error('Error fetching yoga topics:', error);
@@ -517,7 +480,7 @@ const YogaSection = () => {
       ) : topics.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {topics.map((topic) => (
-            <Link key={topic.id} href={`/yoga-exercise/${topic.slug}`} className="group">
+            <Link key={topic.id || topic.slug} href={`/yoga-exercise/${topic.slug}`} className="group">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="relative h-48">
                   <ImageWithFallback
@@ -557,19 +520,23 @@ const YogaSection = () => {
    ✅ OPTIMIZED HOME COMPONENT
 ========================================================= */
 
-export default function Home({ initialTopStories, healthTopics: initialHealthTopics, wellnessTopics: initialWellnessTopics }) {
+export default function Home({ 
+  initialTopStories = [], 
+  healthTopics: initialHealthTopics = [], 
+  wellnessTopics: initialWellnessTopics = [] 
+}) {
   // ✅ Use memoized initial state
-  const [topStories] = useState(initialTopStories || []);
-  const [healthTopics] = useState(initialHealthTopics || []);
+  const [topStories] = useState(initialTopStories);
+  const [healthTopics] = useState(initialHealthTopics);
   
   // ✅ Wellness topics with client-side fetch fallback
-  const [wellnessTopics, setWellnessTopics] = useState(initialWellnessTopics || []);
+  const [wellnessTopics, setWellnessTopics] = useState(initialWellnessTopics);
   const [wellnessLoading, setWellnessLoading] = useState(!initialWellnessTopics?.length);
   
   // ✅ Lazy states for non-critical content
   const [news, setNews] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory] = useState('all');
   const [trendingCategory, setTrendingCategory] = useState('news');
   const [trendingContent, setTrendingContent] = useState([]);
   const [homeopathyTopics, setHomeopathyTopics] = useState([]);
@@ -589,39 +556,8 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
       try {
         setWellnessLoading(true);
         
-        // Try multiple endpoints
-        const endpoints = [
-          '/cms-api/wellness/topics/',
-          '/cms-api/wellness/topics',
-          '/cms-api/wellness/',
-          '/cms-api/wellness/latest/',
-        ];
-        
-        let topicsData = [];
-        
-        for (const endpoint of endpoints) {
-          try {
-            const res = await fetch(endpoint);
-            if (res.ok) {
-              const data = await res.json();
-              
-              if (Array.isArray(data)) {
-                topicsData = data;
-                break;
-              } else if (data.results) {
-                topicsData = data.results;
-                break;
-              } else if (data.items) {
-                topicsData = data.items;
-                break;
-              }
-            }
-          } catch (err) {
-            console.log(`❌ Wellness endpoint failed: ${endpoint}`);
-          }
-        }
-        
-        setWellnessTopics(topicsData);
+        const data = await fetchWithCache('wellness_topics', () => fetchWellnessTopics(12));
+        setWellnessTopics(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching wellness topics:', error);
       } finally {
@@ -791,6 +727,11 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
             },
           ],
         }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
+        }}
       />
 
       <div className="container-custom py-8">
@@ -814,6 +755,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
                     ? 'bg-primary text-white'
                     : 'bg-white text-neutral-700 border border-neutral-200 hover:border-primary hover:text-primary'
                 }`}
+                aria-label={`Show ${category.name} trending content`}
               >
                 {category.name}
               </button>
@@ -1184,10 +1126,14 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
                   </svg>
                 </Link>
               </div>
-              <div className={`grid gap-6 ${conditions.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : conditions.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+              <div className={`grid gap-6 ${
+                conditions.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : 
+                conditions.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 
+                'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+              }`}>
                 {conditions.slice(0, Math.min(6, Math.max(1, conditions.length))).map((condition) => (
                   <FeaturedArticle
-                    key={condition.id}
+                    key={condition.id || condition.slug}
                     article={{
                       id: condition.id,
                       title: condition.title,
@@ -1249,7 +1195,7 @@ export default function Home({ initialTopStories, healthTopics: initialHealthTop
           ) : news && news.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {news.slice(0, 6).map((article) => (
-                <Link key={article.id} href={`/news/${article.slug}`} className="group">
+                <Link key={article.id || article.slug} href={`/news/${article.slug}`} className="group">
                   <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                     <div className="relative h-48">
                       <ImageWithFallback
