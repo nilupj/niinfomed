@@ -1,11 +1,16 @@
-// pages/yoga-exercise/[slug].js
+// pages/ayurveda/[slug].js
 import { useRouter } from "next/router";
 import Link from "next/link";
+import SEO from "../../components/SEO";
+import axios from "axios";
+import CommentSection from "../../components/CommentSection";
+import ReferencesSection from "../../components/ReferencesSection";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Head from "next/head";
+import ImageWithFallback from "../../components/ImageWithFallback";
 import {
-  fetchYogaTopic,
-  fetchYogaTopics,
+  fetchAyurvedaTopic,
+  fetchAyurvedaTopics,
   getProxiedImageUrl,
   getSafeCMSUrl,
   parseDateSafe,
@@ -21,9 +26,6 @@ import {
   extractEmbedImageIds,
   fetchWagtailImageUrl
 } from "../../utils/api";
-import SEO from "../../components/SEO";
-import CommentSection from "../../components/CommentSection";
-import ReferencesSection from "../../components/ReferencesSection";
 
 /* =========================================================
    ✅ Date Functions
@@ -359,7 +361,7 @@ const TableOfContents = ({ headings = [] }) => {
             <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
               <button
                 onClick={() => scrollToHeading(h.id)}
-                className="text-gray-700 hover:text-purple-600 hover:underline text-left w-full transition-colors"
+                className="text-gray-700 hover:text-amber-600 hover:underline text-left w-full transition-colors"
                 aria-label={`Scroll to ${h.text}`}
               >
                 {h.text}
@@ -390,7 +392,7 @@ const ContentMetadata = ({
   return (
     <div className="flex flex-wrap gap-3 mb-6">
       {category?.name && (
-        <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-3 py-1.5 rounded-full text-sm font-medium">
+        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-3 py-1.5 rounded-full text-sm font-medium">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
@@ -502,19 +504,11 @@ const processHtmlContent = async (html, safeBaseUrl, imageMap = {}) => {
 const SkeletonLoader = () => (
   <div className="container mx-auto px-4 py-16">
     <div className="animate-pulse">
-      {/* Breadcrumb skeleton */}
-      <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
-      
-      {/* Hero image skeleton */}
-      <div className="w-full h-64 md:h-96 bg-gray-200 rounded-2xl mb-6"></div>
-      
-      {/* Title skeleton */}
       <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
       <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
-      
-      {/* Content skeleton */}
-      <div className="space-y-4">
-        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+      <div className="h-64 bg-gray-200 rounded mb-8"></div>
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-4 bg-gray-200 rounded"></div>
         ))}
       </div>
@@ -523,56 +517,17 @@ const SkeletonLoader = () => (
 );
 
 /* =========================================================
-   ✅ Image Component with Fallback
-========================================================= */
-
-const ImageWithFallback = ({ src, alt, className, width, height, priority = false, ...props }) => {
-  const [error, setError] = useState(false);
-  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
-
-  useEffect(() => {
-    setImageSrc(getProxiedImageUrl(src));
-    setError(false);
-  }, [src]);
-
-  if (error || !imageSrc) {
-    return (
-      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
-        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={imageSrc}
-      alt={alt || "Yoga image"}
-      className={className}
-      width={width}
-      height={height}
-      onError={() => setError(true)}
-      loading={priority ? "eager" : "lazy"}
-      decoding={priority ? "sync" : "async"}
-      {...props}
-    />
-  );
-};
-
-/* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 
-export default function YogaDetail({ 
+export default function AyurvedaDetail({ 
   topic: initialTopic, 
   relatedTopics: initialRelated,
   imageMap = {},
   processedBody: initialProcessedBody,
   processedReferences: initialProcessedReferences,
   processedBenefits: initialProcessedBenefits,
-  processedInstructions: initialProcessedInstructions,
+  processedTips: initialProcessedTips,
   headings: initialHeadings,
   mainImageUrl: initialMainImageUrl,
   error
@@ -588,7 +543,7 @@ export default function YogaDetail({
   const [processedBody, setProcessedBody] = useState(initialProcessedBody || "");
   const [processedReferences, setProcessedReferences] = useState(initialProcessedReferences || "");
   const [processedBenefits, setProcessedBenefits] = useState(initialProcessedBenefits || "");
-  const [processedInstructions, setProcessedInstructions] = useState(initialProcessedInstructions || "");
+  const [processedTips, setProcessedTips] = useState(initialProcessedTips || "");
   const [headings, setHeadings] = useState(initialHeadings || []);
   
   const safeCMS = useMemo(() => getSafeCMSUrl(), []);
@@ -614,9 +569,9 @@ export default function YogaDetail({
     [topic?.benefits]
   );
 
-  const rawInstructions = useMemo(
-    () => topic?.instructions || "",
-    [topic?.instructions]
+  const rawTips = useMemo(
+    () => topic?.tips || "",
+    [topic?.tips]
   );
 
   /* =========================================================
@@ -624,7 +579,7 @@ export default function YogaDetail({
   ========================================================= */
   useEffect(() => {
     if (initialProcessedBody && initialProcessedReferences && 
-        initialProcessedBenefits && initialProcessedInstructions) {
+        initialProcessedBenefits && initialProcessedTips) {
       setContentLoaded(true);
       return;
     }
@@ -640,7 +595,7 @@ export default function YogaDetail({
           { key: 'body', content: topic.body, setter: setProcessedBody },
           { key: 'references', content: topic.references, setter: setProcessedReferences },
           { key: 'benefits', content: topic.benefits, setter: setProcessedBenefits },
-          { key: 'instructions', content: topic.instructions, setter: setProcessedInstructions }
+          { key: 'tips', content: topic.tips, setter: setProcessedTips }
         ];
 
         const results = await Promise.allSettled(
@@ -695,7 +650,7 @@ export default function YogaDetail({
       mounted = false;
     };
   }, [topic, safeCMS, imageMap, initialProcessedBody, initialProcessedReferences, 
-      initialProcessedBenefits, initialProcessedInstructions]);
+      initialProcessedBenefits, initialProcessedTips]);
 
   // Fetch topic if not provided
   useEffect(() => {
@@ -703,13 +658,13 @@ export default function YogaDetail({
       const fetchData = async () => {
         try {
           setLoading(true);
-          const topicData = await fetchYogaTopic(router.query.slug);
+          const topicData = await fetchAyurvedaTopic(router.query.slug);
           
           if (topicData) {
             setTopic(topicData);
             
             // Fetch related topics
-            const topicsList = await fetchYogaTopics(6);
+            const topicsList = await fetchAyurvedaTopics(6);
             setRelatedTopics(topicsList.filter(t => t.slug !== router.query.slug).slice(0, 3));
           } else {
             throw new Error("Topic not found");
@@ -753,14 +708,14 @@ export default function YogaDetail({
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-red-800 mb-3">
-            Error Loading Yoga Topic
+            Error Loading Ayurveda Topic
           </h1>
           <p className="text-red-700 mb-6">{error}</p>
           <Link
-            href="/yoga-exercise"
+            href="/ayurveda"
             className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
-            ← Browse All Yoga Topics
+            ← Browse All Ayurveda Topics
           </Link>
         </div>
       </div>
@@ -776,16 +731,16 @@ export default function YogaDetail({
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-yellow-800 mb-3">
-            Yoga Topic Not Found
+            Ayurveda Topic Not Found
           </h1>
           <p className="text-yellow-700 mb-6">
-            This yoga topic does not exist or may have been removed.
+            This ayurveda topic does not exist or may have been removed.
           </p>
           <Link
-            href="/yoga-exercise"
+            href="/ayurveda"
             className="inline-flex items-center px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
           >
-            ← Browse All Yoga Topics
+            ← Browse All Ayurveda Topics
           </Link>
         </div>
       </div>
@@ -793,13 +748,12 @@ export default function YogaDetail({
   }
 
   const fallbackImage =
-    "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&h=630&q=75";
+    "https://images.unsplash.com/photo-1542736667-069246bdbc6d?auto=format&fit=crop&w=1200&h=630&q=75";
 
   const mainImageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
-
   const reviewerDisplayName = getAuthorDisplayName(topic.reviewer);
   const reviewerSlug = getReviewerSlug(topic.reviewer);
 
@@ -817,10 +771,8 @@ export default function YogaDetail({
   return (
     <>
       <Head>
-        {/* ✅ Critical CSS for LCP */}
         <style dangerouslySetInnerHTML={{ __html: criticalCSS }} />
         
-        {/* ✅ Preload LCP image */}
         <link 
           rel="preload" 
           as="image" 
@@ -828,7 +780,6 @@ export default function YogaDetail({
           fetchPriority="high"
         />
         
-        {/* ✅ Preconnect to image domains */}
         <link rel="preconnect" href="https://images.unsplash.com" />
         {mainImageUrl.includes('api.niinfomed.com') && (
           <link rel="preconnect" href="https://api.niinfomed.com" />
@@ -836,17 +787,17 @@ export default function YogaDetail({
       </Head>
 
       <SEO
-        title={`${topic.title} - Yoga & Exercise - Niinfomed`}
+        title={`${topic.title} - Ayurveda - Niinfomed`}
         description={topic.summary?.substring(0, 160) || topic.title}
         image={mainImageUrl}
-        url={`https://niinfomed.com/yoga-exercise/${topic.slug}`}
+        url={`https://niinfomed.com/ayurveda/${topic.slug}`}
         openGraph={{
           type: 'article',
           article: {
             publishedTime: publishedDate?.toISOString(),
             modifiedTime: updatedDate?.toISOString(),
             authors: authorDisplayName ? [authorDisplayName] : [],
-            tags: ['yoga', 'exercise', 'fitness', 'wellness', topic.category?.name].filter(Boolean),
+            tags: ['ayurveda', 'alternative medicine', topic.category?.name].filter(Boolean),
           },
         }}
         twitter={{
@@ -856,7 +807,6 @@ export default function YogaDetail({
         }}
       />
 
-      {/* ✅ Mobile Responsive Container */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb */}
         <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1 above-fold" aria-label="Breadcrumb">
@@ -864,14 +814,14 @@ export default function YogaDetail({
             Home
           </Link>
           <span aria-hidden="true">/</span>
-          <Link href="/yoga-exercise" className="hover:text-gray-800 transition-colors">
-            Yoga & Exercise
+          <Link href="/ayurveda" className="hover:text-gray-800 transition-colors">
+            Ayurveda
           </Link>
           {topic.category?.name && (
             <>
               <span aria-hidden="true">/</span>
               <Link 
-                href={`/yoga-exercise/categories/${topic.category.slug}`}
+                href={`/ayurveda/categories/${topic.category.slug}`}
                 className="hover:text-gray-800 transition-colors"
               >
                 {topic.category.name}
@@ -887,7 +837,7 @@ export default function YogaDetail({
         <div className="grid lg:grid-cols-[1fr_320px] gap-8 lg:gap-10">
           {/* ARTICLE */}
           <article className="min-w-0 above-fold">
-            {/* Hero Image - CRITICAL FOR LCP */}
+            {/* Hero Image */}
             {topic.image && (
               <div className="relative w-full h-[220px] sm:h-[320px] md:h-[420px] rounded-2xl overflow-hidden shadow-lg mb-6 hero-container">
                 <ImageWithFallback
@@ -980,7 +930,7 @@ export default function YogaDetail({
 
             {/* Summary */}
             {topic.summary && (
-              <div className="mb-8 p-5 sm:p-6 bg-purple-50 border border-purple-200 rounded-2xl">
+              <div className="mb-8 p-5 sm:p-6 bg-amber-50 border border-amber-200 rounded-2xl">
                 <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
                   {topic.summary}
                 </p>
@@ -1002,11 +952,7 @@ export default function YogaDetail({
                 </h2>
 
                 <div
-                  className="prose prose-base sm:prose-lg max-w-none
-                             prose-img:w-full prose-img:h-auto
-                             prose-img:rounded-xl prose-img:shadow
-                             prose-headings:scroll-mt-24
-                             prose-a:text-purple-600 prose-a:no-underline hover:prose-a:underline"
+                  className="prose prose-base sm:prose-lg max-w-none prose-img:w-full prose-img:h-auto prose-img:rounded-xl prose-img:shadow prose-headings:scroll-mt-24 prose-a:text-amber-600 prose-a:no-underline hover:prose-a:underline"
                   dangerouslySetInnerHTML={{ __html: processedBody }}
                 />
               </div>
@@ -1025,15 +971,15 @@ export default function YogaDetail({
               </div>
             )}
 
-            {/* Instructions */}
-            {contentLoaded && processedInstructions && (
+            {/* Tips */}
+            {contentLoaded && processedTips && (
               <div className="mb-8 p-5 sm:p-6 bg-yellow-50 border border-yellow-200 rounded-2xl">
                 <h3 className="text-xl font-bold mb-4 text-yellow-800">
-                  Step-by-Step Instructions
+                  Tips & Recommendations
                 </h3>
                 <div
                   className="prose prose-base sm:prose-lg max-w-none"
-                  dangerouslySetInnerHTML={{ __html: processedInstructions }}
+                  dangerouslySetInnerHTML={{ __html: processedTips }}
                 />
               </div>
             )}
@@ -1048,17 +994,17 @@ export default function YogaDetail({
             {/* Disclaimer */}
             <div className="mt-8 p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-xl">
               <p className="text-sm text-blue-700">
-                <strong>Safety Disclaimer:</strong> This information is for
-                educational purposes only. Consult with a qualified yoga instructor
-                or healthcare provider before starting any new exercise program,
-                especially if you have pre-existing health conditions.
+                <strong>Ayurvedic Disclaimer:</strong> This information is for
+                educational purposes only and not a substitute for medical
+                advice. Consult a qualified practitioner before starting any
+                treatment.
               </p>
             </div>
 
             {/* Comments - Load last */}
             {contentLoaded && (
               <CommentSection
-                contentType="yoga"
+                contentType="ayurveda"
                 contentSlug={topic.slug}
                 pageTitle={topic.title}
               />
@@ -1125,7 +1071,7 @@ export default function YogaDetail({
                       return (
                         <Link
                           key={item.id || item.slug}
-                          href={`/yoga-exercise/${item.slug}`}
+                          href={`/ayurveda/${item.slug}`}
                           className="block group"
                           prefetch={false}
                         >
@@ -1141,12 +1087,12 @@ export default function YogaDetail({
                             </div>
 
                             <div className="min-w-0">
-                              <p className="font-semibold text-sm text-gray-800 group-hover:text-purple-600 line-clamp-2">
+                              <p className="font-semibold text-sm text-gray-800 group-hover:text-amber-600 line-clamp-2">
                                 {item.title}
                               </p>
                               <p className="text-xs text-gray-500 line-clamp-2 mt-1">
                                 {item.summary?.substring(0, 80) ||
-                                  "Learn more about yoga"}
+                                  "Learn more about Ayurveda"}
                               </p>
                             </div>
                           </div>
@@ -1157,10 +1103,10 @@ export default function YogaDetail({
 
                   <div className="mt-5">
                     <Link
-                      href="/yoga-exercise"
-                      className="inline-flex w-full justify-center items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      href="/ayurveda"
+                      className="inline-flex w-full justify-center items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
                     >
-                      View All Yoga Topics
+                      View All Ayurveda Topics
                     </Link>
                   </div>
                 </div>
@@ -1172,7 +1118,7 @@ export default function YogaDetail({
         {/* Mobile Related Topics */}
         {relatedTopics?.length > 0 && contentLoaded && (
           <div className="mt-12 lg:hidden">
-            <h2 className="text-2xl font-bold mb-6">Related Yoga Topics</h2>
+            <h2 className="text-2xl font-bold mb-6">Related Ayurveda Topics</h2>
             <div className="grid md:grid-cols-2 gap-6">
               {relatedTopics.slice(0, 3).map((item) => {
                 const relatedImage = getProxiedImageUrl(item.image) || fallbackImage;
@@ -1180,7 +1126,7 @@ export default function YogaDetail({
                 return (
                   <Link
                     key={item.id || item.slug}
-                    href={`/yoga-exercise/${item.slug}`}
+                    href={`/ayurveda/${item.slug}`}
                     className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                     prefetch={false}
                   >
@@ -1213,12 +1159,12 @@ export default function YogaDetail({
 
       <style jsx global>{`
         .prose a {
-          color: #9333ea;
+          color: #d97706;
           text-decoration: underline;
           text-underline-offset: 2px;
         }
         .prose a:hover {
-          color: #7e22ce;
+          color: #b45309;
         }
         .scroll-mt-24 {
           scroll-margin-top: 6rem;
@@ -1236,7 +1182,7 @@ export async function getStaticPaths() {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     
-    const response = await fetch(`${baseUrl}/api/yoga/topics/`);
+    const response = await fetch(`${baseUrl}/api/ayurveda/topics/`);
     const data = await response.json();
     
     const topics = data.results || data.items || data;
@@ -1247,13 +1193,13 @@ export async function getStaticPaths() {
         params: { slug: t.slug },
       }));
 
-    console.log(`✅ Generated ${paths.length} yoga paths`);
+    console.log(`✅ Generated ${paths.length} ayurveda paths`);
     return { 
       paths, 
       fallback: "blocking" 
     };
   } catch (error) {
-    console.error("Error fetching yoga paths:", error);
+    console.error("Error fetching ayurveda paths:", error);
     return { 
       paths: [], 
       fallback: "blocking" 
@@ -1266,15 +1212,15 @@ export async function getStaticProps({ params }) {
     const start = Date.now();
     const slug = params.slug;
 
-    console.log(`📡 Fetching yoga topic: ${slug} from Oracle CMS`);
+    console.log(`📡 Fetching ayurveda topic: ${slug} from Oracle CMS`);
 
     const [topic, topicsList] = await Promise.allSettled([
-      fetchYogaTopic(slug),
-      fetchYogaTopics(6)
+      fetchAyurvedaTopic(slug),
+      fetchAyurvedaTopics(6)
     ]);
 
     if (topic.status === 'rejected' || !topic.value) {
-      console.log(`❌ Yoga topic not found: ${slug}`);
+      console.log(`❌ Ayurveda topic not found: ${slug}`);
       return { 
         notFound: true, 
         revalidate: 60 
@@ -1302,7 +1248,7 @@ export async function getStaticProps({ params }) {
     let processedBody = "";
     let processedReferences = "";
     let processedBenefits = "";
-    let processedInstructions = "";
+    let processedTips = "";
     let headings = [];
     
     if (topic.value.body) {
@@ -1328,15 +1274,15 @@ export async function getStaticProps({ params }) {
       processedBenefits = processed;
     }
     
-    if (topic.value.instructions) {
-      let processed = fixMediaUrls(topic.value.instructions || "", imageMap);
+    if (topic.value.tips) {
+      let processed = fixMediaUrls(topic.value.tips || "", imageMap);
       processed = await fixWagtailInternalLinks(processed, safeCMS);
-      processedInstructions = processed;
+      processedTips = processed;
     }
     
     const mainImageUrl = getProxiedImageUrl(topic.value.image);
     
-    console.log(`✅ Generated yoga article ${slug} in ${Date.now() - start}ms`);
+    console.log(`✅ Generated ayurveda article ${slug} in ${Date.now() - start}ms`);
     
     return {
       props: {
@@ -1346,24 +1292,24 @@ export async function getStaticProps({ params }) {
         processedBody,
         processedReferences,
         processedBenefits,
-        processedInstructions,
+        processedTips,
         headings,
         mainImageUrl
       },
       revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
-    console.error(`Error fetching yoga article ${params.slug}:`, error);
+    console.error(`Error fetching ayurveda article ${params.slug}:`, error);
     return { 
       props: {
-        error: 'Failed to load yoga topic. Please try again later.',
+        error: 'Failed to load ayurveda topic. Please try again later.',
         topic: null,
         relatedTopics: [],
         imageMap: {},
         processedBody: '',
         processedReferences: '',
         processedBenefits: '',
-        processedInstructions: '',
+        processedTips: '',
         headings: [],
         mainImageUrl: ''
       },
