@@ -1,372 +1,49 @@
+// pages/yoga-exercise/[slug].js
 import { useRouter } from "next/router";
 import Link from "next/link";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import Head from "next/head";
+import {
+  fetchYogaTopic,
+  fetchYogaTopics,
+  getProxiedImageUrl,
+  getSafeCMSUrl,
+  parseDateSafe,
+  formatDateDisplay,
+  getTimeAgo,
+  fixWagtailInternalLinks,
+  replaceEmbedImages,
+  extractHeadings,
+  slugify,
+  addHeadingIds,
+  fixMediaUrls,
+  tryEndpoints,
+  extractEmbedImageIds,
+  fetchWagtailImageUrl
+} from "../../utils/api";
 import SEO from "../../components/SEO";
-import axios from "axios";
 import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
-import { useState, useEffect, useMemo } from "react";
-import Head from "next/head";
-
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
 
 /* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
-   ✅ FIX: Mobile cannot fetch 0.0.0.0 / localhost / 127.0.0.1
-========================================================= */
-const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-
-  if (typeof window !== "undefined") {
-    const frontendHost = window.location.hostname;
-
-    // Only replace if the base contains localhost/127.0.0.1
-    if (base.includes('localhost') || base.includes('127.0.0.1') || base.includes('0.0.0.0')) {
-      base = base
-        .replace("0.0.0.0", frontendHost)
-        .replace("127.0.0.1", frontendHost)
-        .replace("localhost", frontendHost);
-    }
-  }
-
-  return base;
-};
-
-/* =========================================================
-   ✅ Helper: Fix all CMS media URLs inside HTML (src + srcset)
-========================================================= */
-const fixMediaUrlsInHtml = (html) => {
-  if (!html) return "";
-
-  return html
-    // Oracle CMS patterns
-    .replace(/src="https?:\/\/161\.118\.167\.107\/media\//g, 'src="/cms-media/')
-    .replace(/src='https?:\/\/161\.118\.167\.107\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/0\.0\.0\.0:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/0\.0\.0\.0:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/127\.0\.0\.1:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/127\.0\.0\.1:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="http:\/\/localhost:8001\/media\//g, 'src="/cms-media/')
-    .replace(/src='http:\/\/localhost:8001\/media\//g, "src='/cms-media/")
-    .replace(/src="\/media\//g, 'src="/cms-media/')
-    .replace(/src='\/media\//g, "src='/cms-media/")
-    .replace(/srcset="\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="https?:\/\/161\.118\.167\.107\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='https?:\/\/161\.118\.167\.107\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/0\.0\.0\.0:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/0\.0\.0\.0:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/127\.0\.0\.1:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/127\.0\.0\.1:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/srcset="http:\/\/localhost:8001\/media\//g, 'srcset="/cms-media/')
-    .replace(/srcset='http:\/\/localhost:8001\/media\//g, "srcset='/cms-media/")
-    .replace(/\/cms-media\/media\//g, "/cms-media/");
-};
-
-/* =========================================================
-   ✅ IMAGE OPTIMIZATION HELPER
-========================================================= */
-const optimizeImageUrl = (url, width = 1200) => {
-  if (!url) return null;
-  
-  if (url.includes('unsplash.com') || url.includes('cloudinary') || url.includes('imgix')) {
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}w=${width}&q=75&auto=format,compress`;
-  }
-  
-  return getProxiedImageUrl(url);
-};
-
-/* =========================================================
-   ✅ Helper: Single image URL fix
-========================================================= */
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
-    return url
-      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
-      .replace('/cms-media/media/', '/cms-media/');
-  }
-
-  if (url.startsWith("http://0.0.0.0:8001")) {
-    return url
-      .replace("http://0.0.0.0:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://127.0.0.1:8001")) {
-    return url
-      .replace("http://127.0.0.1:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("http://localhost:8001")) {
-    return url
-      .replace("http://localhost:8001", "/cms-media")
-      .replace("/cms-media/media/", "/cms-media/");
-  }
-
-  if (url.startsWith("/media/")) {
-    return `/cms-media${url.replace("/media/", "/")}`;
-  }
-
-  if (url.startsWith("/cms-media/")) {
-    return url.replace("/cms-media/media/", "/cms-media/");
-  }
-
-  return url;
-};
-
-/* =========================================================
-   ✅ Wagtail EMBED IMAGE FIX FUNCTIONS
-========================================================= */
-const extractEmbedImageIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/embedtype="image"[^>]*id="(\d+)"/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailImageUrl = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/images/${id}/`);
-    if (!res.ok) throw new Error(`Image ${id} fetch failed`);
-
-    const data = await res.json();
-
-    const url =
-      data?.meta?.download_url ||
-      data?.meta?.preview_url ||
-      data?.meta?.original?.url ||
-      data?.original?.url ||
-      null;
-
-    if (!url) return null;
-
-    if (url.startsWith("/")) return `${safeBaseUrl}${url}`;
-
-    return url;
-  } catch (err) {
-    console.error("fetchWagtailImageUrl error:", err);
-    return null;
-  }
-};
-
-const replaceEmbedImages = async (html = "", safeBaseUrl = "") => {
-  try {
-    if (!html) return "";
-
-    let updatedHtml = html;
-    const ids = extractEmbedImageIds(updatedHtml);
-
-    if (!ids.length) return updatedHtml;
-
-    for (const id of ids) {
-      const imgUrl = await fetchWagtailImageUrl(id, safeBaseUrl);
-
-      if (!imgUrl) {
-        updatedHtml = updatedHtml.replace(
-          new RegExp(
-            `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-            "g"
-          ),
-          ""
-        );
-        continue;
-      }
-
-      const proxiedUrl = getProxiedImageUrl(imgUrl);
-
-      updatedHtml = updatedHtml.replace(
-        new RegExp(
-          `<embed\\s+[^>]*embedtype="image"[^>]*id="${id}"[^>]*\\/?>`,
-          "g"
-        ),
-        `<img src="${proxiedUrl}" alt="Yoga Exercise Image" class="max-w-full h-auto rounded-xl" loading="lazy" width="800" height="450" />`
-      );
-    }
-
-    return updatedHtml;
-  } catch (err) {
-    console.error("replaceEmbedImages error:", err);
-    return html;
-  }
-};
-
-/* =========================================================
-   ✅ FIX WAGTAIL INTERNAL LINKS (CLICKABLE FIX)
-   Converts: <a linktype="page" id="75"> -> <a href="/yoga-exercise/slug">
-========================================================= */
-const extractInternalPageLinkIds = (html = "") => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<a[^>]*linktype="page"[^>]*id="(\d+)"[^>]*>/g)];
-  return matches.map((m) => m[1]);
-};
-
-const fetchWagtailPageById = async (id, safeBaseUrl) => {
-  try {
-    const res = await fetch(`${safeBaseUrl}/api/v2/pages/${id}/`);
-    if (!res.ok) throw new Error("page fetch failed");
-    return await res.json();
-  } catch (err) {
-    return null;
-  }
-};
-
-const buildFrontendUrlFromWagtailPage = (pageData) => {
-  if (!pageData) return "#";
-  
-  const type = (pageData?.meta?.type || "").toLowerCase();
-  const slug = pageData?.meta?.slug || pageData?.slug;
-
-  if (!slug) return "#";
-
-  // Yoga Exercise and other route mappings
-  if (type.includes("yoga")) return `/yoga-exercise/${slug}`;
-  if (type.includes("wellness")) return `/wellness/${slug}`;
-  if (type.includes("ayurveda")) return `/ayurveda/${slug}`;
-  if (type.includes("news")) return `/news/${slug}`;
-  if (type.includes("article")) return `/articles/${slug}`;
-  if (type.includes("condition")) return `/conditions/${slug}`;
-  if (type.includes("drug")) return `/drugs/${slug}`;
-  if (type.includes("homeopathy")) return `/homeopathy/${slug}`;
-
-  // Fallback
-  return `/${slug}`;
-};
-
-const fixWagtailInternalLinks = async (html = "", safeBaseUrl = "") => {
-  if (!html) return "";
-
-  let updated = html;
-
-  try {
-    // 1) Fix internal page links
-    const ids = extractInternalPageLinkIds(updated);
-
-    for (const id of ids) {
-      const pageData = await fetchWagtailPageById(id, safeBaseUrl);
-      const url = pageData ? buildFrontendUrlFromWagtailPage(pageData) : "#";
-
-      updated = updated.replace(
-        new RegExp(`<a([^>]*?)linktype="page"([^>]*?)id="${id}"([^>]*?)>`, "g"),
-        `<a$1$2href="${url}"$3>`
-      );
-    }
-
-    // 2) Fix document links
-    updated = updated.replace(
-      /<a([^>]*?)linktype="document"([^>]*?)id="(\d+)"([^>]*?)>/g,
-      `<a$1$2href="${CMS_API_URL}/documents/$3/" target="_blank" rel="noopener noreferrer"$4>`
-    );
-
-    // 3) Remove leftover wagtail attributes
-    updated = updated.replace(/linktype="[^"]*"/g, "");
-    updated = updated.replace(/\s?id="\d+"/g, "");
-
-    // 4) Make external links open in new tab
-    updated = updated.replace(
-      /<a([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/g,
-      `<a$1href="$2"$3 target="_blank" rel="noopener noreferrer">`
-    );
-
-  } catch (error) {
-    console.error("Error fixing internal links:", error);
-  }
-
-  return updated;
-};
-
-/* =========================================================
-   ✅ TOC Helpers
-========================================================= */
-const slugify = (text) =>
-  (text || "")
-    .toLowerCase()
-    .trim()
-    .replace(/<\/?[^>]+(>|$)/g, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-
-const extractHeadings = (html) => {
-  if (!html) return [];
-  const matches = [...html.matchAll(/<h([2-3])[^>]*>(.*?)<\/h\1>/gi)];
-  return matches.map((m) => ({
-    level: Number(m[1]),
-    text: m[2].replace(/<\/?[^>]+(>|$)/g, "").trim(),
-    id: slugify(m[2].replace(/<\/?[^>]+(>|$)/g, "").trim())
-  }));
-};
-
-const addHeadingIds = (html, headings) => {
-  if (!html || !headings?.length) return html;
-
-  let updated = html;
-  headings.forEach((h) => {
-    if (!h.id) return;
-
-    updated = updated.replace(
-      new RegExp(`<h${h.level}([^>]*)>${h.text}</h${h.level}>`, "i"),
-      `<h${h.level}$1 id="${h.id}">${h.text}</h${h.level}>`
-    );
-  });
-
-  return updated;
-};
-
-/* =========================================================
-   ENHANCED: Date Functions with Fallbacks
+   ✅ Date Functions
 ========================================================= */
 
 const createFallbackDates = () => {
   const now = new Date();
-
   const publishedDate = new Date(now);
-  publishedDate.setDate(now.getDate() - 30);
-
+  publishedDate.setDate(now.getDate() - 60);
   const updatedDate = new Date(now);
-  updatedDate.setDate(now.getDate() - 7);
-
+  updatedDate.setDate(now.getDate() - 30);
   const lastReviewedDate = new Date(now);
-  lastReviewedDate.setDate(now.getDate() - 15);
+  lastReviewedDate.setDate(now.getDate() - 45);
 
   return {
     published: publishedDate,
     updated: updatedDate,
     lastReviewed: lastReviewedDate,
-    isFallback: true,
+    isFallback: true
   };
-};
-
-const parseDateSafe = (dateString) => {
-  if (!dateString) return null;
-
-  try {
-    const date = new Date(dateString);
-    return !isNaN(date.getTime()) ? date : null;
-  } catch (error) {
-    return null;
-  }
 };
 
 const extractDatesFromTopic = (topic) => {
@@ -376,148 +53,80 @@ const extractDatesFromTopic = (topic) => {
       publishedDate: fallback.published,
       updatedDate: fallback.updated,
       lastReviewedDate: fallback.lastReviewed,
-      isFallback: true,
+      isFallback: true
     };
   }
 
-  let publishedDate = null;
-  let updatedDate = null;
-  let lastReviewedDate = null;
+  const dateFieldGroups = {
+    published: [
+      'first_published_at', 'first_published_date', 'published_date',
+      'publish_date', 'published_at', 'publication_date', 'created_at',
+      'created_date', 'date_published', 'date'
+    ],
+    updated: [
+      'last_published_at', 'last_published_date', 'updated_at',
+      'updated_date', 'modified_at', 'modified_date', 'last_updated',
+      'last_modified', 'update_date'
+    ],
+    reviewed: [
+      'last_reviewed', 'last_reviewed_date', 'reviewed_at',
+      'review_date', 'medical_review_date'
+    ]
+  };
 
-  const possiblePublishedFields = [
-    "first_published_at",
-    "first_published_date",
-    "published_date",
-    "publish_date",
-    "published_at",
-    "publication_date",
-    "created_at",
-    "created_date",
-    "date_published",
-    "date",
-  ];
-
-  const possibleUpdatedFields = [
-    "last_published_at",
-    "last_published_date",
-    "updated_at",
-    "updated_date",
-    "modified_at",
-    "modified_date",
-    "last_updated",
-    "last_modified",
-    "update_date",
-  ];
-
-  const possibleReviewedFields = [
-    "last_reviewed",
-    "last_reviewed_date",
-    "reviewed_at",
-    "review_date",
-    "medical_review_date",
-  ];
-
-  for (const field of possiblePublishedFields) {
-    if (topic[field]) {
-      publishedDate = parseDateSafe(topic[field]);
-      if (publishedDate) break;
+  const findDateFromFields = (fields) => {
+    for (const field of fields) {
+      if (topic[field]) {
+        const date = parseDateSafe(topic[field]);
+        if (date) return date;
+      }
     }
-  }
+    return null;
+  };
 
-  for (const field of possibleUpdatedFields) {
-    if (topic[field]) {
-      updatedDate = parseDateSafe(topic[field]);
-      if (updatedDate) break;
-    }
-  }
+  const publishedDate = findDateFromFields(dateFieldGroups.published);
+  const updatedDate = findDateFromFields(dateFieldGroups.updated);
+  const lastReviewedDate = findDateFromFields(dateFieldGroups.reviewed);
 
-  for (const field of possibleReviewedFields) {
-    if (topic[field]) {
-      lastReviewedDate = parseDateSafe(topic[field]);
-      if (lastReviewedDate) break;
-    }
-  }
-
-  if (!publishedDate && !updatedDate) {
+  if (!publishedDate && !updatedDate && !lastReviewedDate) {
     const fallback = createFallbackDates();
     return {
       publishedDate: fallback.published,
       updatedDate: fallback.updated,
       lastReviewedDate: fallback.lastReviewed,
-      isFallback: true,
+      isFallback: true
     };
   }
 
-  if (!publishedDate && updatedDate) publishedDate = updatedDate;
-  if (!updatedDate && publishedDate) updatedDate = publishedDate;
-  if (!lastReviewedDate) lastReviewedDate = updatedDate || publishedDate;
+  const finalPublishedDate = publishedDate || updatedDate || lastReviewedDate;
+  const finalUpdatedDate = updatedDate || publishedDate || lastReviewedDate;
+  const finalReviewedDate = lastReviewedDate || updatedDate || publishedDate;
 
   return {
-    publishedDate,
-    updatedDate,
-    lastReviewedDate,
-    isFallback: false,
+    publishedDate: finalPublishedDate,
+    updatedDate: finalUpdatedDate,
+    lastReviewedDate: finalReviewedDate,
+    isFallback: false
   };
-};
-
-const formatDateDisplay = (date) => {
-  if (!date) return "Date not available";
-  try {
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch (error) {
-    return "Invalid date";
-  }
-};
-
-const getTimeAgo = (date) => {
-  if (!date) return "";
-  try {
-    const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
-
-    if (seconds < 60) return "just now";
-
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60)
-      return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-
-    const days = Math.floor(hours / 24);
-    if (days === 1) return "yesterday";
-    if (days < 7) return `${days} days ago`;
-
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return `${weeks} week${weeks !== 1 ? "s" : ""} ago`;
-
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months} month${months !== 1 ? "s" : ""} ago`;
-
-    const years = Math.floor(days / 365);
-    return `${years} year${years !== 1 ? "s" : ""} ago`;
-  } catch (error) {
-    return "";
-  }
 };
 
 const isContentUpdated = (publishedDate, updatedDate) => {
   if (!publishedDate || !updatedDate) return false;
+
   try {
+    if (publishedDate.getTime() === updatedDate.getTime()) return false;
+    
     const diffTime = Math.abs(updatedDate - publishedDate);
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0;
+    
+    return diffDays > 7;
   } catch (error) {
     return false;
   }
 };
 
 /* =========================================================
-   DateDisplay Component
+   ✅ DateDisplay Component
 ========================================================= */
 
 const DateDisplay = ({
@@ -526,49 +135,53 @@ const DateDisplay = ({
   lastReviewedDate,
   isFallback = false,
   compact = false,
-  className = "",
+  className = ""
 }) => {
   const isUpdated = isContentUpdated(publishedDate, updatedDate);
-  const publishedDisplay = formatDateDisplay(publishedDate);
-  const updatedDisplay = formatDateDisplay(updatedDate);
-  const lastReviewedDisplay = formatDateDisplay(lastReviewedDate);
-
-  const publishedTimeAgo = getTimeAgo(publishedDate);
-  const updatedTimeAgo = getTimeAgo(updatedDate);
-  const reviewedTimeAgo = getTimeAgo(lastReviewedDate);
 
   if (compact) {
     return (
-      <div
+      <div 
         className={`flex flex-wrap items-center gap-2 text-sm text-gray-600 ${className}`}
+        aria-label="Publication dates"
       >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+        <svg 
+          className="w-4 h-4 flex-shrink-0" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24" 
+          aria-hidden="true"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2} 
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" 
           />
         </svg>
 
         <span className="font-medium">Published:</span>
-        <time dateTime={publishedDate?.toISOString() || ""}>
-          {publishedDisplay}
+        <time 
+          dateTime={publishedDate?.toISOString() || ''}
+          className="whitespace-nowrap"
+        >
+          {formatDateDisplay(publishedDate)}
         </time>
 
         {isUpdated && (
-          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+          <span 
+            className="ml-2 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200"
+            aria-label="This information has been updated"
+          >
             Updated
           </span>
         )}
 
         {isFallback && (
-          <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+          <span 
+            className="ml-2 px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200"
+            aria-label="Estimated dates based on typical publication timelines"
+          >
             Estimated
           </span>
         )}
@@ -577,141 +190,143 @@ const DateDisplay = ({
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-4 ${className}`} role="region" aria-label="Information timeline">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Published */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        {/* Published Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Publication information"
+        >
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
+            <div 
+              className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
             <div>
-              <h4 className="font-semibold text-gray-900">Published</h4>
-              <p className="text-sm text-gray-500">Original publication date</p>
+              <h4 className="font-semibold text-gray-900">Information Published</h4>
+              <p className="text-xs text-gray-500">When this information was first published</p>
             </div>
           </div>
 
           <div className="text-center">
             <time
-              dateTime={publishedDate?.toISOString() || ""}
-              className="text-lg sm:text-xl font-bold text-gray-800 block"
+              dateTime={publishedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
             >
-              {publishedDisplay}
+              {formatDateDisplay(publishedDate)}
             </time>
             <span className="text-sm text-gray-500 mt-1 block">
-              {publishedTimeAgo}
+              {getTimeAgo(publishedDate)}
             </span>
           </div>
         </div>
 
-        {/* Updated */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        {/* Updated Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Update information"
+        >
           <div className="flex items-center gap-3 mb-3">
-            <div
-              className={`w-10 h-10 rounded-full ${
-                isUpdated ? "bg-green-100" : "bg-gray-100"
-              } flex items-center justify-center`}
+            <div 
+              className={`w-10 h-10 rounded-full ${isUpdated ? 'bg-green-100' : 'bg-gray-100'} flex items-center justify-center`}
+              aria-hidden="true"
             >
-              <svg
-                className={`w-5 h-5 ${
-                  isUpdated ? "text-green-600" : "text-gray-600"
-                }`}
-                fill="none"
-                stroke="currentColor"
+              <svg 
+                className={`w-5 h-5 ${isUpdated ? 'text-green-600' : 'text-gray-600'}`} 
+                fill="none" 
+                stroke="currentColor" 
                 viewBox="0 0 24 24"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </div>
             <div>
               <h4 className="font-semibold text-gray-900">
-                {isUpdated ? "Updated" : "Last Updated"}
+                {isUpdated ? 'Updated' : 'Last Updated'}
               </h4>
-              <p className="text-sm text-gray-500">
-                {isUpdated ? "Most recent update" : "Last modification"}
+              <p className="text-xs text-gray-500">
+                {isUpdated ? 'Most recent update' : 'Last modification'}
               </p>
             </div>
           </div>
 
           <div className="text-center">
             <time
-              dateTime={updatedDate?.toISOString() || ""}
-              className="text-lg sm:text-xl font-bold text-gray-800 block"
+              dateTime={updatedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
             >
-              {updatedDisplay}
+              {formatDateDisplay(updatedDate)}
             </time>
             <span className="text-sm text-gray-500 mt-1 block">
-              {updatedTimeAgo}
+              {getTimeAgo(updatedDate)}
             </span>
           </div>
         </div>
 
-        {/* Reviewed */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        {/* Reviewed Date */}
+        <div 
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          role="article"
+          aria-label="Medical review information"
+        >
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-purple-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                />
+            <div 
+              className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div>
-              <h4 className="font-semibold text-gray-900">Reviewed</h4>
-              <p className="text-sm text-gray-500">Medical review date</p>
+              <h4 className="font-semibold text-gray-900">Medically Reviewed</h4>
+              <p className="text-xs text-gray-500">Last medical review date</p>
             </div>
           </div>
 
           <div className="text-center">
             <time
-              dateTime={lastReviewedDate?.toISOString() || ""}
-              className="text-lg sm:text-xl font-bold text-gray-800 block"
+              dateTime={lastReviewedDate?.toISOString() || ''}
+              className="text-lg font-bold text-gray-800 block"
             >
-              {lastReviewedDisplay}
+              {formatDateDisplay(lastReviewedDate)}
             </time>
             <span className="text-sm text-gray-500 mt-1 block">
-              {reviewedTimeAgo}
+              {getTimeAgo(lastReviewedDate)}
             </span>
           </div>
         </div>
       </div>
 
       {isFallback && (
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-          <p className="text-sm text-yellow-700">
-            Dates are estimated because CMS did not provide publication timeline.
-          </p>
+        <div 
+          className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl"
+          role="alert"
+          aria-label="Estimated dates notice"
+        >
+          <div className="flex items-start gap-3">
+            <svg 
+              className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" 
+              fill="currentColor" 
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+            >
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <h5 className="font-medium text-yellow-800 mb-1">Estimated Dates</h5>
+              <p className="text-sm text-yellow-700">
+                This information was recently added to our database. The dates shown are estimated
+                based on typical publication timelines.
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -719,128 +334,13 @@ const DateDisplay = ({
 };
 
 /* =========================================================
-   Helper Functions
+   ✅ Table of Contents Component
 ========================================================= */
-
-const getAbsoluteImageUrl = (url) => {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/")) return `${CMS_API_URL}${url}`;
-  return url;
-};
-
-const fixRelativeMediaUrls = (html = "") => {
-  if (!html) return "";
-  let processed = html;
-
-  processed = processed.replace(/src="\/media\//g, `src="${CMS_API_URL}/media/`);
-  processed = processed.replace(/src='\/media\//g, `src='${CMS_API_URL}/media/`);
-
-  processed = processed.replace(/url\(\/media\//g, `url(${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\('\/media\//g, `url('${CMS_API_URL}/media/`);
-  processed = processed.replace(/url\("\/media\//g, `url("${CMS_API_URL}/media/`);
-
-  return processed;
-};
-
-const fixWagtailEmbedImages = (html = "", imageMap = {}) => {
-  if (!html) return "";
-
-  let processed = html;
-
-  processed = processed.replace(
-    /<embed\s+[^>]*embedtype="image"[^>]*id="(\d+)"[^>]*\/?>/gi,
-    (match, id) => {
-      const imgUrl = imageMap?.[id] ? getAbsoluteImageUrl(imageMap[id]) : null;
-
-      if (!imgUrl) {
-        return `<div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 my-4">
-          Image not found (ID: ${id})
-        </div>`;
-      }
-
-      return `
-        <img
-          src="${imgUrl}"
-          alt="Yoga Exercise Image"
-          class="max-w-full w-full h-auto rounded-xl shadow my-4"
-          loading="lazy"
-          width="800"
-          height="450"
-        />
-      `;
-    }
-  );
-
-  return processed;
-};
-
-const fixMediaUrls = (html = "", imageMap = {}) => {
-  let processed = html;
-  processed = fixWagtailEmbedImages(processed, imageMap);
-  processed = fixRelativeMediaUrls(processed);
-  return processed;
-};
-
-const getAuthorDisplayName = (author) => {
-  if (!author) return null;
-  return author.name || author.display_name || author.full_name || null;
-};
-
-const getAuthorSlug = (author) => {
-  if (!author) return null;
-  if (author.slug) return author.slug;
-  if (author.name) {
-    return author.name
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-");
-  }
-  return null;
-};
-
-const getReviewerSlug = (reviewer) => {
-  if (!reviewer) return null;
-  if (reviewer.slug) return reviewer.slug;
-  if (reviewer.name) {
-    return reviewer.name
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-");
-  }
-  return null;
-};
-
-/* =========================================================
-   ✅ Skeleton Loader Component
-========================================================= */
-const SkeletonLoader = () => (
-  <div className="container mx-auto px-4 py-16">
-    <div className="animate-pulse">
-      {/* Breadcrumb skeleton */}
-      <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
-      
-      {/* Hero image skeleton */}
-      <div className="w-full h-64 md:h-96 bg-gray-200 rounded-2xl mb-6"></div>
-      
-      {/* Title skeleton */}
-      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
-      <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
-      
-      {/* Content skeleton */}
-      <div className="space-y-4">
-        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-          <div key={i} className="h-4 bg-gray-200 rounded"></div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
 
 const TableOfContents = ({ headings = [] }) => {
   if (!headings.length) return null;
 
-  const scrollToHeading = (id) => {
+  const scrollToHeading = useCallback((id) => {
     if (typeof window === "undefined") return;
     const el = document.getElementById(id);
     if (!el) return;
@@ -848,29 +348,32 @@ const TableOfContents = ({ headings = [] }) => {
     const offset = 90;
     const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
     window.scrollTo({ top, behavior: "smooth" });
-  };
+  }, []);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
       <h3 className="text-lg font-bold mb-3">On this page</h3>
-      <ul className="space-y-2 text-sm">
-        {headings.map((h) => (
-          <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
-            <button
-              onClick={() => scrollToHeading(h.id)}
-              className="text-gray-700 hover:text-purple-600 hover:underline text-left w-full transition-colors"
-            >
-              {h.text}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <nav aria-label="Table of contents">
+        <ul className="space-y-2 text-sm">
+          {headings.map((h) => (
+            <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
+              <button
+                onClick={() => scrollToHeading(h.id)}
+                className="text-gray-700 hover:text-purple-600 hover:underline text-left w-full transition-colors"
+                aria-label={`Scroll to ${h.text}`}
+              >
+                {h.text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </div>
   );
 };
 
 /* =========================================================
-   Content Metadata Component
+   ✅ Content Metadata Component
 ========================================================= */
 
 const ContentMetadata = ({ 
@@ -935,24 +438,149 @@ const ContentMetadata = ({
 };
 
 /* =========================================================
+   ✅ Helper Functions
+========================================================= */
+
+const getAuthorDisplayName = (author) => {
+  if (!author) return null;
+  return author.name || author.display_name || author.full_name || null;
+};
+
+const getAuthorSlug = (author) => {
+  if (!author) return null;
+  if (author.slug) return author.slug;
+  if (author.name) {
+    return author.name
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-");
+  }
+  return null;
+};
+
+const getReviewerSlug = (reviewer) => {
+  if (!reviewer) return null;
+  if (reviewer.slug) return reviewer.slug;
+  if (reviewer.name) {
+    return reviewer.name
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-");
+  }
+  return null;
+};
+
+/* =========================================================
+   ✅ PROCESS HTML CONTENT
+========================================================= */
+
+const processHtmlContent = async (html, safeBaseUrl, imageMap = {}) => {
+  try {
+    if (!html) return html;
+    
+    let processedHtml = html;
+    
+    // 1. Fix media URLs (including embed images)
+    processedHtml = fixMediaUrls(processedHtml, imageMap);
+    
+    // 2. Replace embed images (additional processing)
+    processedHtml = await replaceEmbedImages(processedHtml, safeBaseUrl);
+    
+    // 3. Fix Wagtail internal links
+    processedHtml = await fixWagtailInternalLinks(processedHtml, safeBaseUrl);
+    
+    return processedHtml;
+  } catch (error) {
+    console.error("Error processing HTML content:", error);
+    return html;
+  }
+};
+
+/* =========================================================
+   ✅ Skeleton Loader Component
+========================================================= */
+const SkeletonLoader = () => (
+  <div className="container mx-auto px-4 py-16">
+    <div className="animate-pulse">
+      {/* Breadcrumb skeleton */}
+      <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
+      
+      {/* Hero image skeleton */}
+      <div className="w-full h-64 md:h-96 bg-gray-200 rounded-2xl mb-6"></div>
+      
+      {/* Title skeleton */}
+      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
+      <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+      
+      {/* Content skeleton */}
+      <div className="space-y-4">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="h-4 bg-gray-200 rounded"></div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+/* =========================================================
+   ✅ Image Component with Fallback
+========================================================= */
+
+const ImageWithFallback = ({ src, alt, className, width, height, priority = false, ...props }) => {
+  const [error, setError] = useState(false);
+  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
+
+  useEffect(() => {
+    setImageSrc(getProxiedImageUrl(src));
+    setError(false);
+  }, [src]);
+
+  if (error || !imageSrc) {
+    return (
+      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
+        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt || "Yoga image"}
+      className={className}
+      width={width}
+      height={height}
+      onError={() => setError(true)}
+      loading={priority ? "eager" : "lazy"}
+      decoding={priority ? "sync" : "async"}
+      {...props}
+    />
+  );
+};
+
+/* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 
 export default function YogaDetail({ 
   topic: initialTopic, 
   relatedTopics: initialRelated,
-  imageMap,
+  imageMap = {},
   processedBody: initialProcessedBody,
   processedReferences: initialProcessedReferences,
   processedBenefits: initialProcessedBenefits,
   processedInstructions: initialProcessedInstructions,
   headings: initialHeadings,
-  mainImageUrl: initialMainImageUrl
+  mainImageUrl: initialMainImageUrl,
+  error
 }) {
   const router = useRouter();
 
   const [topic, setTopic] = useState(initialTopic);
-  const [relatedTopics, setRelatedTopics] = useState(initialRelated);
+  const [relatedTopics, setRelatedTopics] = useState(initialRelated || []);
   const [loading, setLoading] = useState(!initialTopic);
   const [contentLoaded, setContentLoaded] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
@@ -972,23 +600,23 @@ export default function YogaDetail({
 
   /* ✅ Get raw content */
   const rawBody = useMemo(
-    () => fixMediaUrls(topic?.body || "", imageMap || {}),
-    [topic?.body, imageMap]
+    () => topic?.body || "",
+    [topic?.body]
   );
 
   const rawReferences = useMemo(
-    () => fixMediaUrls(topic?.references || "", imageMap || {}),
-    [topic?.references, imageMap]
+    () => topic?.references || "",
+    [topic?.references]
   );
 
   const rawBenefits = useMemo(
-    () => fixMediaUrls(topic?.benefits || "", imageMap || {}),
-    [topic?.benefits, imageMap]
+    () => topic?.benefits || "",
+    [topic?.benefits]
   );
 
   const rawInstructions = useMemo(
-    () => fixMediaUrls(topic?.instructions || "", imageMap || {}),
-    [topic?.instructions, imageMap]
+    () => topic?.instructions || "",
+    [topic?.instructions]
   );
 
   /* =========================================================
@@ -997,7 +625,6 @@ export default function YogaDetail({
   useEffect(() => {
     if (initialProcessedBody && initialProcessedReferences && 
         initialProcessedBenefits && initialProcessedInstructions) {
-      // Use server-processed content if available
       setContentLoaded(true);
       return;
     }
@@ -1005,51 +632,97 @@ export default function YogaDetail({
     let mounted = true;
 
     const processAllContent = async () => {
+      if (!topic) return;
+
       try {
-        // Run all async operations in parallel
-        const [bodyResult, referencesResult, benefitsResult, instructionsResult] = await Promise.all([
-          // Process body
-          (async () => {
-            const replaced = await replaceEmbedImages(rawBody, safeCMS);
-            return await fixWagtailInternalLinks(replaced, safeCMS);
-          })(),
-          
-          // Process references
-          (async () => {
-            return await fixWagtailInternalLinks(rawReferences, safeCMS);
-          })(),
-          
-          // Process benefits
-          (async () => {
-            return await fixWagtailInternalLinks(rawBenefits, safeCMS);
-          })(),
-          
-          // Process instructions
-          (async () => {
-            return await fixWagtailInternalLinks(rawInstructions, safeCMS);
-          })()
-        ]);
+        // Process all sections in parallel
+        const sections = [
+          { key: 'body', content: topic.body, setter: setProcessedBody },
+          { key: 'references', content: topic.references, setter: setProcessedReferences },
+          { key: 'benefits', content: topic.benefits, setter: setProcessedBenefits },
+          { key: 'instructions', content: topic.instructions, setter: setProcessedInstructions }
+        ];
+
+        const results = await Promise.allSettled(
+          sections.map(async ({ key, content }) => {
+            if (content) {
+              try {
+                const processed = await processHtmlContent(content, safeCMS, imageMap);
+                return { key, content: processed };
+              } catch (error) {
+                console.error(`Error processing ${key}:`, error);
+                return { key, content: fixMediaUrls(content || "", imageMap) };
+              }
+            }
+            return { key, content: "" };
+          })
+        );
 
         if (mounted) {
-          const extractedHeadings = extractHeadings(bodyResult);
-          const bodyWithIds = addHeadingIds(bodyResult, extractedHeadings);
+          results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              const { key, content } = result.value;
+              const setter = sections.find(s => s.key === key)?.setter;
+              if (setter) setter(content);
+            }
+          });
+
+          // Extract headings from body
+          if (processedBody || topic.body) {
+            const bodyContent = processedBody || topic.body;
+            if (bodyContent) {
+              const extractedHeadings = extractHeadings(bodyContent);
+              setHeadings(extractedHeadings);
+            }
+          }
           
-          setProcessedBody(bodyWithIds);
-          setProcessedReferences(referencesResult);
-          setProcessedBenefits(benefitsResult);
-          setProcessedInstructions(instructionsResult);
-          setHeadings(extractedHeadings);
+          setContentLoaded(true);
         }
-      } catch (error) {
-        console.error("Error processing content:", error);
+      } catch (err) {
+        console.error("Error processing content:", err);
+        if (mounted) {
+          if (topic.body) setProcessedBody(fixMediaUrls(topic.body, imageMap));
+          setContentLoaded(true);
+        }
       }
     };
 
-    if (rawBody || rawReferences || rawBenefits || rawInstructions) {
+    if (topic) {
       processAllContent();
     }
-  }, [rawBody, rawReferences, rawBenefits, rawInstructions, safeCMS, 
-      initialProcessedBody, initialProcessedReferences, initialProcessedBenefits, initialProcessedInstructions]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [topic, safeCMS, imageMap, initialProcessedBody, initialProcessedReferences, 
+      initialProcessedBenefits, initialProcessedInstructions]);
+
+  // Fetch topic if not provided
+  useEffect(() => {
+    if (!initialTopic && router.query.slug) {
+      const fetchData = async () => {
+        try {
+          setLoading(true);
+          const topicData = await fetchYogaTopic(router.query.slug);
+          
+          if (topicData) {
+            setTopic(topicData);
+            
+            // Fetch related topics
+            const topicsList = await fetchYogaTopics(6);
+            setRelatedTopics(topicsList.filter(t => t.slug !== router.query.slug).slice(0, 3));
+          } else {
+            throw new Error("Topic not found");
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchData();
+    }
+  }, [router.query.slug, initialTopic]);
 
   /* ✅ Mark content as loaded when hero image loads */
   useEffect(() => {
@@ -1059,25 +732,40 @@ export default function YogaDetail({
       return;
     }
 
-    // Use window.Image to avoid conflict
     const imageLoader = typeof window !== 'undefined' ? new window.Image() : null;
     
     if (imageLoader) {
-      const imageUrl = getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image);
+      const imageUrl = getProxiedImageUrl(topic.image);
       imageLoader.src = imageUrl;
       imageLoader.onload = () => {
         setHeroImageLoaded(true);
-        setContentLoaded(true);
       };
       imageLoader.onerror = () => {
         setHeroImageLoaded(true);
-        setContentLoaded(true);
       };
     } else {
       setHeroImageLoaded(true);
-      setContentLoaded(true);
     }
   }, [topic?.image]);
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center">
+        <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
+          <h1 className="text-2xl font-bold text-red-800 mb-3">
+            Error Loading Yoga Topic
+          </h1>
+          <p className="text-red-700 mb-6">{error}</p>
+          <Link
+            href="/yoga-exercise"
+            className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            ← Browse All Yoga Topics
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (router.isFallback || loading) {
     return <SkeletonLoader />;
@@ -1088,16 +776,16 @@ export default function YogaDetail({
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-yellow-800 mb-3">
-            Yoga & Exercise Topic Not Found
+            Yoga Topic Not Found
           </h1>
           <p className="text-yellow-700 mb-6">
-            This yoga & exercise topic does not exist or may have been removed.
+            This yoga topic does not exist or may have been removed.
           </p>
           <Link
             href="/yoga-exercise"
             className="inline-flex items-center px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
           >
-            ← Browse All Yoga & Exercise Topics
+            ← Browse All Yoga Topics
           </Link>
         </div>
       </div>
@@ -1107,7 +795,7 @@ export default function YogaDetail({
   const fallbackImage =
     "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&h=630&q=75";
 
-  const mainImageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image) || fallbackImage;
+  const mainImageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
@@ -1142,8 +830,8 @@ export default function YogaDetail({
         
         {/* ✅ Preconnect to image domains */}
         <link rel="preconnect" href="https://images.unsplash.com" />
-        {mainImageUrl.includes('161.118.167.107') && (
-          <link rel="preconnect" href="http://161.118.167.107" />
+        {mainImageUrl.includes('api.niinfomed.com') && (
+          <link rel="preconnect" href="https://api.niinfomed.com" />
         )}
       </Head>
 
@@ -1151,49 +839,67 @@ export default function YogaDetail({
         title={`${topic.title} - Yoga & Exercise - Niinfomed`}
         description={topic.summary?.substring(0, 160) || topic.title}
         image={mainImageUrl}
+        url={`https://niinfomed.com/yoga-exercise/${topic.slug}`}
+        openGraph={{
+          type: 'article',
+          article: {
+            publishedTime: publishedDate?.toISOString(),
+            modifiedTime: updatedDate?.toISOString(),
+            authors: authorDisplayName ? [authorDisplayName] : [],
+            tags: ['yoga', 'exercise', 'fitness', 'wellness', topic.category?.name].filter(Boolean),
+          },
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
+        }}
       />
 
       {/* ✅ Mobile Responsive Container */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb */}
-        <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1 above-fold">
+        <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1 above-fold" aria-label="Breadcrumb">
           <Link href="/" className="hover:text-gray-800 transition-colors">
             Home
           </Link>
-          <span>/</span>
+          <span aria-hidden="true">/</span>
           <Link href="/yoga-exercise" className="hover:text-gray-800 transition-colors">
             Yoga & Exercise
           </Link>
           {topic.category?.name && (
             <>
-              <span>/</span>
-              <span className="text-gray-700 font-medium">
+              <span aria-hidden="true">/</span>
+              <Link 
+                href={`/yoga-exercise/categories/${topic.category.slug}`}
+                className="hover:text-gray-800 transition-colors"
+              >
                 {topic.category.name}
-              </span>
+              </Link>
             </>
           )}
+          <span aria-hidden="true">/</span>
+          <span className="text-gray-700 font-medium" aria-current="page">
+            {topic.title}
+          </span>
         </nav>
 
         <div className="grid lg:grid-cols-[1fr_320px] gap-8 lg:gap-10">
           {/* ARTICLE */}
           <article className="min-w-0 above-fold">
             {/* Hero Image - CRITICAL FOR LCP */}
-            <div className="relative w-full h-[220px] sm:h-[320px] md:h-[420px] rounded-2xl overflow-hidden shadow-lg mb-6 hero-container">
-              <img
-                src={mainImageUrl}
-                alt={topic.title}
-                className="w-full h-full object-cover"
-                loading="eager" // ✅ Force eager loading for LCP
-                decoding="async"
-                width={1200}
-                height={630}
-                onLoad={() => setHeroImageLoaded(true)}
-                onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = fallbackImage;
-                }}
-              />
-            </div>
+            {topic.image && (
+              <div className="relative w-full h-[220px] sm:h-[320px] md:h-[420px] rounded-2xl overflow-hidden shadow-lg mb-6 hero-container">
+                <ImageWithFallback
+                  src={mainImageUrl}
+                  alt={topic.title}
+                  className="w-full h-full object-cover"
+                  width={1200}
+                  height={630}
+                  priority={true}
+                />
+              </div>
+            )}
 
             {/* Title */}
             <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight mb-3">
@@ -1299,7 +1005,8 @@ export default function YogaDetail({
                   className="prose prose-base sm:prose-lg max-w-none
                              prose-img:w-full prose-img:h-auto
                              prose-img:rounded-xl prose-img:shadow
-                             prose-headings:scroll-mt-24"
+                             prose-headings:scroll-mt-24
+                             prose-a:text-purple-600 prose-a:no-underline hover:prose-a:underline"
                   dangerouslySetInnerHTML={{ __html: processedBody }}
                 />
               </div>
@@ -1332,9 +1039,9 @@ export default function YogaDetail({
             )}
 
             {/* References */}
-            {contentLoaded && topic.references && (
+            {contentLoaded && processedReferences && (
               <div className="mt-8 pt-8 border-t border-gray-200">
-                <ReferencesSection references={processedReferences || topic.references || ""} />
+                <ReferencesSection references={processedReferences} />
               </div>
             )}
 
@@ -1377,6 +1084,7 @@ export default function YogaDetail({
                       publishedDate={publishedDate}
                       updatedDate={updatedDate}
                       lastReviewedDate={lastReviewedDate}
+                      isFallback={isFallback}
                       compact={true}
                     />
                   </div>
@@ -1412,8 +1120,7 @@ export default function YogaDetail({
 
                   <div className="space-y-4">
                     {relatedTopics.slice(0, 3).map((item) => {
-                      const relatedImage =
-                        getProxiedImageUrl(item.image) || getAbsoluteImageUrl(item.image) || fallbackImage;
+                      const relatedImage = getProxiedImageUrl(item.image) || fallbackImage;
 
                       return (
                         <Link
@@ -1424,18 +1131,12 @@ export default function YogaDetail({
                         >
                           <div className="flex gap-3 items-start">
                             <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                              <img
+                              <ImageWithFallback
                                 src={relatedImage}
                                 alt={item.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                loading="lazy"
-                                decoding="async"
                                 width={80}
                                 height={64}
-                                onError={(e) => {
-                                  e.currentTarget.onerror = null;
-                                  e.currentTarget.src = fallbackImage;
-                                }}
                               />
                             </div>
 
@@ -1472,24 +1173,22 @@ export default function YogaDetail({
         {relatedTopics?.length > 0 && contentLoaded && (
           <div className="mt-12 lg:hidden">
             <h2 className="text-2xl font-bold mb-6">Related Yoga Topics</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-2 gap-6">
               {relatedTopics.slice(0, 3).map((item) => {
-                const relatedImage = getProxiedImageUrl(item.image) || getAbsoluteImageUrl(item.image) || fallbackImage;
+                const relatedImage = getProxiedImageUrl(item.image) || fallbackImage;
 
                 return (
                   <Link
-                    key={item.id}
+                    key={item.id || item.slug}
                     href={`/yoga-exercise/${item.slug}`}
                     className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                     prefetch={false}
                   >
                     <div className="h-48 w-full overflow-hidden">
-                      <img
+                      <ImageWithFallback
                         src={relatedImage}
                         alt={item.title}
                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                        decoding="async"
                         width={400}
                         height={240}
                       />
@@ -1511,216 +1210,138 @@ export default function YogaDetail({
           </div>
         )}
       </div>
+
+      <style jsx global>{`
+        .prose a {
+          color: #9333ea;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose a:hover {
+          color: #7e22ce;
+        }
+        .scroll-mt-24 {
+          scroll-margin-top: 6rem;
+        }
+      `}</style>
     </>
   );
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION WITH PERFORMANCE OPTIMIZATIONS
+   ✅ STATIC GENERATION
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     
-    const listEndpoints = [
-      `${baseUrl}/api/yoga/topics/`,
-      `${baseUrl}/api/yoga/topics`,
-      `${baseUrl}/api/v1/yoga/topics/`,
-      `${baseUrl}/api/v1/yoga/`,
-      `${baseUrl}/yoga/topics/`,
-      `${baseUrl}/api/v2/pages/?type=yoga.YogaTopicPage&fields=slug`,
-    ];
-
-    console.log("🔍 Fetching yoga paths from Oracle CMS...");
+    const response = await fetch(`${baseUrl}/api/yoga/topics/`);
+    const data = await response.json();
     
-    let topics = [];
+    const topics = data.results || data.items || data;
     
-    for (const endpoint of listEndpoints) {
-      try {
-        const response = await axios.get(endpoint, {
-          timeout: 10000,
-          params: { limit: 100 },
-        });
-        
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          topics = data;
-          break;
-        } else if (data.results) {
-          topics = data.results;
-          break;
-        } else if (data.items) {
-          topics = data.items;
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
-
     const paths = topics
-      .filter(t => t?.slug)
+      .filter(t => t && t.slug)
       .map((t) => ({
         params: { slug: t.slug },
       }));
 
     console.log(`✅ Generated ${paths.length} yoga paths`);
-    return { paths, fallback: "blocking" };
+    return { 
+      paths, 
+      fallback: "blocking" 
+    };
   } catch (error) {
     console.error("Error fetching yoga paths:", error);
-    return { paths: [], fallback: "blocking" };
+    return { 
+      paths: [], 
+      fallback: "blocking" 
+    };
   }
 }
 
 export async function getStaticProps({ params }) {
   try {
     const start = Date.now();
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
     const slug = params.slug;
 
     console.log(`📡 Fetching yoga topic: ${slug} from Oracle CMS`);
 
-    // Try multiple endpoints for topic detail
-    const detailEndpoints = [
-      `${baseUrl}/api/yoga/topics/${slug}/`,
-      `${baseUrl}/api/yoga/topics/${slug}`,
-      `${baseUrl}/api/v1/yoga/topics/${slug}/`,
-      `${baseUrl}/api/v1/yoga/topics/${slug}`,
-      `${baseUrl}/yoga/topics/${slug}/`,
-      `${baseUrl}/yoga/topics/${slug}`,
-      `${baseUrl}/api/v2/pages/?slug=${slug}&type=yoga.YogaTopicPage`,
-    ];
+    const [topic, topicsList] = await Promise.allSettled([
+      fetchYogaTopic(slug),
+      fetchYogaTopics(6)
+    ]);
 
-    let topic = null;
-    
-    for (const endpoint of detailEndpoints) {
-      try {
-        const response = await axios.get(endpoint, {
-          timeout: 10000,
-          params: { lang: "en" },
-        });
-        
-        if (response.data) {
-          if (response.data.items && response.data.items.length > 0) {
-            topic = response.data.items[0];
-          } else if (response.data.results && response.data.results.length > 0) {
-            topic = response.data.results[0];
-          } else {
-            topic = response.data;
-          }
-          
-          if (topic) {
-            console.log(`✅ Found topic at: ${endpoint}`);
-            break;
-          }
-        }
-      } catch (err) {
-        console.log(`❌ Failed: ${endpoint}`);
-      }
-    }
-
-    if (!topic) {
+    if (topic.status === 'rejected' || !topic.value) {
       console.log(`❌ Yoga topic not found: ${slug}`);
-      return { notFound: true, revalidate: 60 };
+      return { 
+        notFound: true, 
+        revalidate: 60 
+      };
     }
 
-    // Try multiple endpoints for related topics
-    let allTopics = [];
-    
-    const listEndpoints = [
-      `${baseUrl}/api/yoga/topics/`,
-      `${baseUrl}/api/yoga/topics`,
-      `${baseUrl}/api/v1/yoga/topics/`,
-      `${baseUrl}/yoga/topics/`,
-      `${baseUrl}/api/v2/pages/?type=yoga.YogaTopicPage`,
-    ];
-    
-    for (const endpoint of listEndpoints) {
-      try {
-        const response = await axios.get(endpoint, {
-          timeout: 10000,
-          params: { limit: 6, lang: "en" },
-        });
-        
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          allTopics = data;
-          break;
-        } else if (data.results) {
-          allTopics = data.results;
-          break;
-        } else if (data.items) {
-          allTopics = data.items;
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Related endpoint failed: ${endpoint}`);
-      }
-    }
+    const relatedTopics = topicsList.status === 'fulfilled'
+      ? topicsList.value.filter((t) => t.slug !== slug).slice(0, 3)
+      : [];
 
-    const relatedTopics = allTopics.filter((t) => t.slug !== slug);
-
-    const ids = extractEmbedImageIds(topic.body || "");
+    const safeCMS = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
+    
+    // Extract image IDs for embed images
+    const ids = extractEmbedImageIds(topic.value.body || "");
     const imageMap = {};
 
-    await Promise.all(
+    await Promise.allSettled(
       ids.map(async (id) => {
-        const url = await fetchWagtailImageUrl(id, baseUrl);
+        const url = await fetchWagtailImageUrl(id, safeCMS);
         if (url) imageMap[id] = url;
       })
     );
 
-    // Server-side URL for processing
-    const safeCMS = baseUrl;
-    
-    // Pre-process HTML on server-side for better performance
+    // Pre-process content on server-side for better performance
     let processedBody = "";
     let processedReferences = "";
     let processedBenefits = "";
     let processedInstructions = "";
     let headings = [];
     
-    if (topic.body) {
-      // Fix media URLs
-      const fixedMedia = fixMediaUrls(topic.body || "", imageMap);
+    if (topic.value.body) {
+      let processed = fixMediaUrls(topic.value.body || "", imageMap);
+      processed = await replaceEmbedImages(processed, safeCMS);
+      processed = await fixWagtailInternalLinks(processed, safeCMS);
+      processedBody = processed;
       
-      // Process embed images and internal links in parallel if needed
-      const rawBody = fixedMedia;
-      const replaced = await replaceEmbedImages(rawBody, safeCMS);
-      const linked = await fixWagtailInternalLinks(replaced, safeCMS);
-      
-      // Extract and add heading IDs
-      headings = extractHeadings(linked);
-      processedBody = addHeadingIds(linked, headings);
+      // Extract headings
+      headings = extractHeadings(processed);
+      processedBody = addHeadingIds(processed, headings);
     }
     
-    if (topic.references) {
-      const fixedRefs = fixMediaUrls(topic.references || "", imageMap);
-      processedReferences = await fixWagtailInternalLinks(fixedRefs, safeCMS);
+    if (topic.value.references) {
+      let processed = fixMediaUrls(topic.value.references || "", imageMap);
+      processed = await fixWagtailInternalLinks(processed, safeCMS);
+      processedReferences = processed;
     }
     
-    if (topic.benefits) {
-      const fixedBenefits = fixMediaUrls(topic.benefits || "", imageMap);
-      processedBenefits = await fixWagtailInternalLinks(fixedBenefits, safeCMS);
+    if (topic.value.benefits) {
+      let processed = fixMediaUrls(topic.value.benefits || "", imageMap);
+      processed = await fixWagtailInternalLinks(processed, safeCMS);
+      processedBenefits = processed;
     }
     
-    if (topic.instructions) {
-      const fixedInstructions = fixMediaUrls(topic.instructions || "", imageMap);
-      processedInstructions = await fixWagtailInternalLinks(fixedInstructions, safeCMS);
+    if (topic.value.instructions) {
+      let processed = fixMediaUrls(topic.value.instructions || "", imageMap);
+      processed = await fixWagtailInternalLinks(processed, safeCMS);
+      processedInstructions = processed;
     }
     
-    // Optimize main image URL
-    const mainImageUrl = getProxiedImageUrl(topic.image) || getAbsoluteImageUrl(topic.image);
+    const mainImageUrl = getProxiedImageUrl(topic.value.image);
     
     console.log(`✅ Generated yoga article ${slug} in ${Date.now() - start}ms`);
     
     return {
       props: {
-        topic,
-        relatedTopics: relatedTopics.slice(0, 3),
+        topic: topic.value,
+        relatedTopics,
         imageMap,
         processedBody,
         processedReferences,
@@ -1729,10 +1350,24 @@ export async function getStaticProps({ params }) {
         headings,
         mainImageUrl
       },
-      revalidate: 3600,
+      revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
     console.error(`Error fetching yoga article ${params.slug}:`, error);
-    return { notFound: true, revalidate: 60 };
+    return { 
+      props: {
+        error: 'Failed to load yoga topic. Please try again later.',
+        topic: null,
+        relatedTopics: [],
+        imageMap: {},
+        processedBody: '',
+        processedReferences: '',
+        processedBenefits: '',
+        processedInstructions: '',
+        headings: [],
+        mainImageUrl: ''
+      },
+      revalidate: 60 
+    };
   }
 }
