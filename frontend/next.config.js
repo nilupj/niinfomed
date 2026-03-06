@@ -21,7 +21,7 @@ const nextConfig = {
       // ✅ Keep IP as fallback for development
       {
         protocol: "http",
-        hostname: "161.118.167.107",
+        hostname: "api.niinfomed.com",
         pathname: "/media/**",
       },
       {
