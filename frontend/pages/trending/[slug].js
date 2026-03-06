@@ -1,51 +1,19 @@
+// pages/trending/[slug].js
 import { useRouter } from 'next/router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import axios from 'axios';
 import { NextSeo } from 'next-seo';
-
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-// Helper to get proxied image URL
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
-  }
-  
-  // Handle localhost patterns
-  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
-    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
-  }
-  
-  if (url.startsWith('/media/')) {
-    return `/cms-media${url.replace('/media/', '/')}`;
-  }
-  
-  return url;
-};
+import ImageWithFallback from '../../components/ImageWithFallback';
+import { 
+  fetchTrendingBySlug,
+  fetchTopStories,
+  fetchLatestNews,
+  fetchLatestConditions,
+  fetchWellnessTopics,
+  getProxiedImageUrl,
+  formatDateDisplay,
+  tryEndpoints
+} from '../../utils/api';
 
 // Helper to format date
 const formatDate = (dateString) => {
@@ -62,12 +30,12 @@ const formatDate = (dateString) => {
   }
 };
 
-export default function TrendingDetail() {
+export default function TrendingDetail({ trendingData: initialData = null, error: initialError = null }) {
   const router = useRouter();
   const { slug } = router.query;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [trendingData, setTrendingData] = useState(null);
+  const [loading, setLoading] = useState(!initialData);
+  const [error, setError] = useState(initialError);
+  const [trendingData, setTrendingData] = useState(initialData);
   const [activeTab, setActiveTab] = useState('articles');
   const [tabContent, setTabContent] = useState({
     articles: [],
@@ -78,43 +46,19 @@ export default function TrendingDetail() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const itemsPerSlide = 3;
 
-  // Fetch trending data on mount
+  // Fetch trending data on mount if not provided
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || initialData) return;
 
     const fetchTrendingData = async () => {
       try {
         setLoading(true);
         console.log(`📡 Fetching trending data for: ${slug} from Oracle CMS`);
         
-        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-        
-        // Try multiple endpoints
-        const endpoints = [
-          `${baseUrl}/api/trending/${slug}/`,
-          `${baseUrl}/api/trending/${slug}`,
-          `${baseUrl}/api/trending/detail/${slug}/`,
-          `${baseUrl}/trending/${slug}/`,
-        ];
-        
-        let data = null;
-        
-        for (const endpoint of endpoints) {
-          try {
-            const response = await fetch(endpoint);
-            if (response.ok) {
-              data = await response.json();
-              console.log(`✅ Success from: ${endpoint}`);
-              break;
-            }
-          } catch (err) {
-            console.log(`❌ Failed: ${endpoint}`);
-          }
-        }
+        const data = await fetchTrendingBySlug(slug);
 
         if (!data) {
           setError('This trending topic could not be found.');
-          setLoading(false);
           return;
         }
 
@@ -125,16 +69,17 @@ export default function TrendingDetail() {
         }
 
         setTrendingData(data);
-        setLoading(false);
+        setError(null);
       } catch (err) {
         console.error('Error checking trending item:', err);
         setError('Unable to load this trending topic.');
+      } finally {
         setLoading(false);
       }
     };
 
     fetchTrendingData();
-  }, [slug, router]);
+  }, [slug, initialData, router]);
 
   // Fetch content for each tab
   useEffect(() => {
@@ -142,99 +87,18 @@ export default function TrendingDetail() {
       try {
         console.log('📡 Fetching tab content from Oracle CMS');
         
-        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-        
-        // Articles endpoints
-        const articlesEndpoints = [
-          `${baseUrl}/api/articles/latest/?limit=6&lang=en`,
-          `${baseUrl}/api/articles/?limit=6&lang=en`,
-          `${baseUrl}/api/articles/top-stories?limit=6&lang=en`,
-        ];
-        
-        // News endpoints
-        const newsEndpoints = [
-          `${baseUrl}/api/news/latest/?limit=6&lang=en`,
-          `${baseUrl}/api/news/?limit=6&lang=en`,
-        ];
-        
-        // Conditions endpoints
-        const conditionsEndpoints = [
-          `${baseUrl}/api/conditions/latest/?limit=6&lang=en`,
-          `${baseUrl}/api/conditions/?limit=6&lang=en`,
-        ];
-        
-        // Wellness endpoints
-        const wellnessEndpoints = [
-          `${baseUrl}/api/wellness/topics/?limit=6&lang=en`,
-          `${baseUrl}/api/wellness/?limit=6&lang=en`,
-          `${baseUrl}/api/wellness/latest/?limit=6&lang=en`,
-        ];
-        
-        // Fetch articles
-        let articlesData = [];
-        for (const endpoint of articlesEndpoints) {
-          try {
-            const res = await fetch(endpoint);
-            if (res.ok) {
-              const data = await res.json();
-              articlesData = processResponse(data);
-              if (articlesData.length > 0) break;
-            }
-          } catch (e) {
-            console.log(`❌ Articles endpoint failed: ${endpoint}`);
-          }
-        }
-        
-        // Fetch news
-        let newsData = [];
-        for (const endpoint of newsEndpoints) {
-          try {
-            const res = await fetch(endpoint);
-            if (res.ok) {
-              const data = await res.json();
-              newsData = processResponse(data);
-              if (newsData.length > 0) break;
-            }
-          } catch (e) {
-            console.log(`❌ News endpoint failed: ${endpoint}`);
-          }
-        }
-        
-        // Fetch conditions
-        let conditionsData = [];
-        for (const endpoint of conditionsEndpoints) {
-          try {
-            const res = await fetch(endpoint);
-            if (res.ok) {
-              const data = await res.json();
-              conditionsData = processResponse(data);
-              if (conditionsData.length > 0) break;
-            }
-          } catch (e) {
-            console.log(`❌ Conditions endpoint failed: ${endpoint}`);
-          }
-        }
-        
-        // Fetch wellness
-        let wellnessData = [];
-        for (const endpoint of wellnessEndpoints) {
-          try {
-            const res = await fetch(endpoint);
-            if (res.ok) {
-              const data = await res.json();
-              wellnessData = processResponse(data);
-              if (wellnessData.length > 0) break;
-            }
-          } catch (e) {
-            console.log(`❌ Wellness endpoint failed: ${endpoint}`);
-          }
-        }
-        
+        const [articlesData, newsData, conditionsData, wellnessData] = await Promise.allSettled([
+          fetchTopStories(6),
+          fetchLatestNews(6),
+          fetchLatestConditions(6),
+          fetchWellnessTopics(6)
+        ]);
+
         setTabContent({
-          articles: articlesData,
-          news: newsData,
-          disease: conditionsData,
-          lifestyle: wellnessData
+          articles: articlesData.status === 'fulfilled' ? articlesData.value || [] : [],
+          news: newsData.status === 'fulfilled' ? newsData.value || [] : [],
+          disease: conditionsData.status === 'fulfilled' ? conditionsData.value || [] : [],
+          lifestyle: wellnessData.status === 'fulfilled' ? wellnessData.value || [] : []
         });
       } catch (err) {
         console.error('Error fetching tab content:', err);
@@ -243,15 +107,6 @@ export default function TrendingDetail() {
 
     fetchTabContent();
   }, []);
-
-  // Handle different response formats
-  const processResponse = (data) => {
-    if (Array.isArray(data)) return data;
-    if (data?.results) return data.results;
-    if (data?.items) return data.items;
-    if (data?.data) return data.data;
-    return [];
-  };
 
   // Reset slide when tab changes
   useEffect(() => {
@@ -272,21 +127,21 @@ export default function TrendingDetail() {
     return () => clearInterval(interval);
   }, [activeTab, tabContent]);
 
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     const currentContent = tabContent[activeTab] || [];
     const totalSlides = Math.ceil(currentContent.length / itemsPerSlide);
     setCurrentSlide((prev) => (prev + 1) % totalSlides);
-  };
+  }, [activeTab, tabContent]);
 
-  const prevSlide = () => {
+  const prevSlide = useCallback(() => {
     const currentContent = tabContent[activeTab] || [];
     const totalSlides = Math.ceil(currentContent.length / itemsPerSlide);
     setCurrentSlide((prev) => (prev - 1 + totalSlides) % totalSlides);
-  };
+  }, [activeTab, tabContent]);
 
-  const goToSlide = (index) => {
+  const goToSlide = useCallback((index) => {
     setCurrentSlide(index);
-  };
+  }, []);
 
   const getContentLink = (item, type) => {
     if (!item || !item.slug) return '#';
@@ -307,17 +162,26 @@ export default function TrendingDetail() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8 animate-pulse">
-        <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
-        <div className="flex gap-2 mb-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-10 bg-gray-200 rounded w-24"></div>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-gray-200 rounded-lg h-64"></div>
-          ))}
+      <div className="container mx-auto px-4 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
+          <div className="flex gap-2 mb-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-10 bg-gray-200 rounded w-24"></div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="h-48 bg-gray-200"></div>
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-3 bg-gray-200 rounded w-full"></div>
+                  <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -361,29 +225,51 @@ export default function TrendingDetail() {
   return (
     <>
       <NextSeo
-        title={trendingData?.title ? `${trendingData.title} - Trending Topics` : "Trending Health Topics"}
+        title={trendingData?.title ? `${trendingData.title} - Trending Topics | Niinfomed` : "Trending Health Topics | Niinfomed"}
         description={trendingData?.description || "Explore trending health and wellness content"}
         openGraph={{
           title: trendingData?.title || "Trending Health Topics",
           description: trendingData?.description || "Explore trending health and wellness content",
+          images: trendingData?.image ? [
+            {
+              url: getProxiedImageUrl(trendingData.image),
+              width: 1200,
+              height: 630,
+              alt: trendingData.title,
+            }
+          ] : [
+            {
+              url: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&h=630',
+              width: 1200,
+              height: 630,
+              alt: 'Trending Topics',
+            }
+          ],
+          siteName: 'Niinfomed',
+          type: 'website',
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
         }}
       />
 
       <div className="bg-gray-50 min-h-screen">
         <div className="container mx-auto px-4 py-8">
           {/* Breadcrumb */}
-          <nav className="text-sm text-gray-500 mb-6">
+          <nav className="text-sm text-gray-500 mb-6" aria-label="Breadcrumb">
             <Link href="/" className="hover:text-red-600 transition-colors">
               Home
             </Link>
-            <span className="mx-2">/</span>
+            <span className="mx-2" aria-hidden="true">/</span>
             <Link href="/trending" className="hover:text-red-600 transition-colors">
               Trending
             </Link>
             {trendingData?.title && (
               <>
-                <span className="mx-2">/</span>
-                <span className="text-gray-700 font-medium">{trendingData.title}</span>
+                <span className="mx-2" aria-hidden="true">/</span>
+                <span className="text-gray-700 font-medium" aria-current="page">{trendingData.title}</span>
               </>
             )}
           </nav>
@@ -415,6 +301,8 @@ export default function TrendingDetail() {
                       ? 'border-red-600 text-red-600'
                       : 'border-transparent text-gray-600 hover:text-gray-900'
                   }`}
+                  aria-label={`Show ${tab.label} content`}
+                  aria-current={activeTab === tab.key ? 'page' : undefined}
                 >
                   {tab.label}
                 </button>
@@ -439,20 +327,19 @@ export default function TrendingDetail() {
                             
                             return (
                               <Link
-                                key={item.id}
+                                key={item.id || item.slug}
                                 href={getContentLink(item, activeTab)}
                                 className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow group"
                               >
                                 {itemImage && (
-                                  <div className="relative h-48 w-full overflow-hidden">
-                                    <img
+                                  <div className="relative h-48 w-full overflow-hidden bg-gray-100">
+                                    <ImageWithFallback
                                       src={itemImage}
                                       alt={item.title}
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                      onError={(e) => {
-                                        e.currentTarget.onerror = null;
-                                        e.currentTarget.src = 'https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=800&q=75';
-                                      }}
+                                      fallbackSrc="https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=800&h=500"
+                                      width={400}
+                                      height={240}
                                     />
                                   </div>
                                 )}
@@ -488,7 +375,8 @@ export default function TrendingDetail() {
                   <>
                     <button
                       onClick={prevSlide}
-                      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white hover:bg-red-600 text-gray-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white hover:bg-red-600 text-gray-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={currentSlide === 0}
                       aria-label="Previous slide"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -497,7 +385,8 @@ export default function TrendingDetail() {
                     </button>
                     <button
                       onClick={nextSlide}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white hover:bg-red-600 text-gray-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white hover:bg-red-600 text-gray-700 hover:text-white rounded-full p-3 shadow-lg transition-all duration-300 z-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={currentSlide === totalSlides - 1}
                       aria-label="Next slide"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -549,6 +438,29 @@ export default function TrendingDetail() {
               </div>
             </div>
           )}
+
+          {/* Newsletter Section */}
+          <div className="mt-12 bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-8 text-white">
+            <div className="max-w-3xl mx-auto text-center">
+              <h3 className="text-2xl font-bold mb-2">Stay Updated with Trending Topics</h3>
+              <p className="mb-6 text-red-100">Get the latest trending health content delivered to your inbox.</p>
+              <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  className="flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-white"
+                  required
+                  aria-label="Email for newsletter"
+                />
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-white text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  Subscribe
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </>
@@ -556,51 +468,23 @@ export default function TrendingDetail() {
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+   ✅ STATIC GENERATION
 ========================================================= */
 
 export async function getStaticPaths() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     
-    const endpoints = [
-      `${baseUrl}/api/trending/`,
-      `${baseUrl}/api/trending`,
-      `${baseUrl}/api/trending/list/`,
-    ];
-
-    console.log("🔍 Fetching trending paths from Oracle CMS...");
+    const response = await fetch(`${baseUrl}/api/trending/`);
+    const data = await response.json();
     
-    let paths = [];
+    const items = data.results || data.items || data;
     
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { timeout: 10000 });
-        const data = response.data;
-        
-        let items = [];
-        if (Array.isArray(data)) {
-          items = data;
-        } else if (data.results) {
-          items = data.results;
-        } else if (data.items) {
-          items = data.items;
-        } else if (data.data) {
-          items = data.data;
-        }
-        
-        if (items.length > 0) {
-          paths = items
-            .filter(item => item?.slug && typeof item.slug === 'string')
-            .map((item) => ({
-              params: { slug: item.slug },
-            }));
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
+    const paths = items
+      .filter(item => item?.slug && typeof item.slug === 'string')
+      .map((item) => ({
+        params: { slug: item.slug },
+      }));
 
     console.log(`✅ Generated ${paths.length} static paths for trending`);
     
@@ -623,40 +507,11 @@ export async function getStaticProps({ params }) {
   }
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
     const slug = params.slug;
     
     console.log(`📡 Fetching trending detail for: ${slug} from Oracle CMS`);
 
-    // Try multiple endpoints for trending detail
-    const endpoints = [
-      `${baseUrl}/api/trending/${slug}/`,
-      `${baseUrl}/api/trending/${slug}`,
-      `${baseUrl}/api/trending/detail/${slug}/`,
-      `${baseUrl}/trending/${slug}/`,
-    ];
-
-    let trendingData = null;
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { 
-          timeout: 10000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (response.data) {
-          trendingData = response.data;
-          console.log(`✅ Found trending at: ${endpoint}`);
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Failed: ${endpoint}`);
-      }
-    }
+    const trendingData = await fetchTrendingBySlug(slug);
 
     if (!trendingData) {
       console.warn(`Trending item not found for slug: ${slug}`);
@@ -671,6 +526,12 @@ export async function getStaticProps({ params }) {
     };
   } catch (error) {
     console.error(`Error fetching trending ${params.slug}:`, error);
-    return { notFound: true, revalidate: 60 };
+    return { 
+      props: {
+        trendingData: null,
+        error: 'Failed to load trending content. Please try again later.'
+      },
+      revalidate: 60 
+    };
   }
 }
