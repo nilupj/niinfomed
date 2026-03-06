@@ -1,115 +1,65 @@
+// pages/videos/index.js
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import axios from 'axios';
 import { NextSeo } from 'next-seo';
+import ImageWithFallback from '../../components/ImageWithFallback';
+import { 
+  fetchVideos, 
+  getProxiedImageUrl,
+  formatDateDisplay 
+} from '../../utils/api';
 
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
 const DEFAULT_LANG = 'en';
 
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
+// Format duration helper
+const formatDuration = (seconds) => {
+  if (!seconds) return null;
+  
+  // If already formatted (e.g., "5:30"), return as is
+  if (typeof seconds === 'string' && seconds.includes(':')) {
+    return seconds;
   }
-  return { data: null, usedUrl: null };
+  
+  // Convert seconds to MM:SS format
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Helper to get proxied image URL
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
-  }
-
-  // Handle localhost patterns
-  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
-    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
-  }
+// Format view count
+const formatViewCount = (views) => {
+  if (!views && views !== 0) return null;
   
-  // Relative media URLs
-  if (url.startsWith('/media/')) {
-    return `/cms-media${url.replace('/media/', '/')}`;
+  if (views >= 1000000) {
+    return `${(views / 1000000).toFixed(1)}M`;
   }
-  
-  // Full URLs (Unsplash, etc.)
-  if (url.startsWith('http')) {
-    return url;
+  if (views >= 1000) {
+    return `${(views / 1000).toFixed(1)}K`;
   }
-  
-  return url;
+  return views.toString();
 };
 
-export default function VideosIndex() {
-  const [videos, setVideos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function VideosIndex({ videos: initialVideos = [], error: initialError }) {
+  const [videos, setVideos] = useState(initialVideos);
+  const [loading, setLoading] = useState(!initialVideos.length);
+  const [error, setError] = useState(initialError);
 
   useEffect(() => {
-    const fetchVideos = async () => {
+    // If we already have videos from getStaticProps, don't fetch again
+    if (initialVideos.length > 0) {
+      setVideos(initialVideos);
+      setLoading(false);
+      return;
+    }
+
+    const fetchVideosData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+        const videosData = await fetchVideos(20, DEFAULT_LANG);
         
-        // Try multiple endpoints
-        const endpoints = [
-          `${baseUrl}/api/videos/?limit=20&lang=${DEFAULT_LANG}`,
-          `${baseUrl}/api/videos?limit=20&lang=${DEFAULT_LANG}`,
-          `${baseUrl}/api/videos/list/?limit=20&lang=${DEFAULT_LANG}`,
-          `${baseUrl}/api/videos/latest/?limit=20&lang=${DEFAULT_LANG}`,
-          `${baseUrl}/api/v2/pages/?type=videos.VideoPage&limit=20&lang=${DEFAULT_LANG}`,
-        ];
-        
-        let videosData = [];
-        
-        for (const endpoint of endpoints) {
-          try {
-            console.log(`🔄 Trying: ${endpoint}`);
-            const res = await fetch(endpoint);
-            
-            if (res.ok) {
-              const data = await res.json();
-              
-              // Handle different response formats
-              if (Array.isArray(data)) {
-                videosData = data;
-                console.log(`✅ Found ${data.length} videos at: ${endpoint}`);
-                break;
-              } else if (data.results) {
-                videosData = data.results;
-                console.log(`✅ Found ${data.results.length} videos at: ${endpoint}`);
-                break;
-              } else if (data.items) {
-                videosData = data.items;
-                console.log(`✅ Found ${data.items.length} videos at: ${endpoint}`);
-                break;
-              } else if (data.data) {
-                videosData = data.data;
-                console.log(`✅ Found ${data.data.length} videos at: ${endpoint}`);
-                break;
-              }
-            }
-          } catch (err) {
-            console.log(`❌ Failed: ${endpoint}`);
-          }
-        }
-
-        setVideos(videosData);
+        setVideos(videosData || []);
       } catch (err) {
         console.error('Error fetching videos:', err);
         setError('Failed to load videos');
@@ -118,8 +68,8 @@ export default function VideosIndex() {
       }
     };
 
-    fetchVideos();
-  }, []);
+    fetchVideosData();
+  }, [initialVideos]);
 
   /* =======================
      Loading State
@@ -131,7 +81,14 @@ export default function VideosIndex() {
           <div className="h-8 bg-gray-200 rounded w-1/4"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-64 bg-gray-200 rounded"></div>
+              <div key={i} className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="h-52 bg-gray-200"></div>
+                <div className="p-5 space-y-3">
+                  <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-4 bg-gray-200 rounded w-full"></div>
+                  <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -180,9 +137,17 @@ export default function VideosIndex() {
               alt: 'Health Videos',
             },
           ],
+          siteName: 'Niinfomed',
+          type: 'website',
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
         }}
       />
 
+      {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 py-12">
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Health Videos</h1>
@@ -212,45 +177,43 @@ export default function VideosIndex() {
           <>
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold">All Videos</h2>
-              <p className="text-gray-600">{videos.length} videos</p>
+              <p className="text-gray-600">{videos.length} video{videos.length !== 1 ? 's' : ''}</p>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {videos.map((video) => {
-                const imageUrl = getProxiedImageUrl(video.image || video.thumbnail);
+                const imageUrl = getProxiedImageUrl(video.thumbnail || video.image);
+                const videoDuration = formatDuration(video.duration);
+                const viewCount = formatViewCount(video.views);
                 
                 return (
                   <Link
-                    key={video.id}
+                    key={video.id || video.slug}
                     href={`/videos/${video.slug}`}
                     className="group bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
                   >
                     {/* Thumbnail */}
                     <div className="relative h-52 w-full overflow-hidden bg-gray-100">
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt={video.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          loading="lazy"
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.src = 'https://images.unsplash.com/photo-1588286840104-8957b019727f?auto=format&fit=crop&w=800&q=75';
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-100">
-                          <svg className="w-16 h-16 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} 
-                              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
+                      <ImageWithFallback
+                        src={imageUrl}
+                        alt={video.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        fallbackSrc="https://images.unsplash.com/photo-1588286840104-8957b019727f?auto=format&fit=crop&w=800&h=500"
+                        width={400}
+                        height={225}
+                      />
+                      
+                      {/* Duration Badge */}
+                      {videoDuration && (
+                        <div className="absolute bottom-3 right-3 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded font-medium">
+                          {videoDuration}
                         </div>
                       )}
                       
-                      {/* Duration Badge */}
-                      {video.duration && (
-                        <div className="absolute bottom-3 right-3 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                          {video.duration}
+                      {/* Category Badge */}
+                      {video.category && (
+                        <div className="absolute top-3 left-3 bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-medium">
+                          {video.category.name}
                         </div>
                       )}
                     </div>
@@ -262,7 +225,7 @@ export default function VideosIndex() {
                       </h2>
 
                       {video.subtitle && (
-                        <p className="text-sm text-blue-600 mb-2">{video.subtitle}</p>
+                        <p className="text-sm text-blue-600 mb-2 line-clamp-1">{video.subtitle}</p>
                       )}
 
                       {video.summary && (
@@ -272,9 +235,13 @@ export default function VideosIndex() {
                       )}
 
                       {/* Metadata */}
-                      <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center justify-between text-sm mt-2">
                         {video.published_at && (
-                          <span className="text-gray-500">
+                          <span className="text-gray-500 flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
                             {new Date(video.published_at).toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: 'short',
@@ -283,9 +250,15 @@ export default function VideosIndex() {
                           </span>
                         )}
                         
-                        {video.views > 0 && (
-                          <span className="text-gray-500">
-                            {video.views.toLocaleString()} views
+                        {viewCount && (
+                          <span className="text-gray-500 flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            {viewCount} views
                           </span>
                         )}
                       </div>
@@ -296,62 +269,48 @@ export default function VideosIndex() {
             </div>
           </>
         )}
+
+        {/* Newsletter Section */}
+        <div className="mt-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 text-white">
+          <div className="max-w-3xl mx-auto text-center">
+            <h3 className="text-2xl font-bold mb-2">Stay Updated with New Videos</h3>
+            <p className="mb-6 text-blue-100">Get notified when we publish new health and wellness videos.</p>
+            <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-white"
+                required
+                aria-label="Email for newsletter"
+              />
+              <button
+                type="submit"
+                className="px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                Subscribe
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </>
   );
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+   ✅ STATIC GENERATION
 ========================================================= */
 export async function getStaticProps() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-    
-    const endpoints = [
-      `${baseUrl}/api/videos/`,
-      `${baseUrl}/api/videos`,
-      `${baseUrl}/api/videos/list/`,
-      `${baseUrl}/api/videos/latest/`,
-      `${baseUrl}/api/v2/pages/?type=videos.VideoPage`,
-    ];
-
     console.log("🔍 Fetching videos data from Oracle CMS...");
     
-    let videos = [];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { 
-          params: { limit: 20, lang: DEFAULT_LANG },
-          timeout: 10000 
-        });
-        
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          videos = data;
-          break;
-        } else if (data.results) {
-          videos = data.results;
-          break;
-        } else if (data.items) {
-          videos = data.items;
-          break;
-        } else if (data.data) {
-          videos = data.data;
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
+    const videos = await fetchVideos(20, DEFAULT_LANG);
 
-    console.log(`✅ Found ${videos.length} videos`);
+    console.log(`✅ Found ${videos?.length || 0} videos`);
     
     return {
       props: {
-        videos,
+        videos: videos || [],
       },
       revalidate: 3600, // Revalidate every hour
     };
@@ -360,6 +319,7 @@ export async function getStaticProps() {
     return {
       props: {
         videos: [],
+        error: 'Failed to load videos. Please try again later.',
       },
       revalidate: 60,
     };
