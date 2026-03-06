@@ -1,13 +1,18 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
 
+  // Generate consistent build ID
+  generateBuildId: async () => {
+    return process.env.BUILD_ID || `build-${Date.now()}`;
+  },
+
   images: {
     unoptimized: true,
     remotePatterns: [
-      // ✅ Domain first (production)
       {
         protocol: "https",
         hostname: "api.niinfomed.com",
@@ -18,7 +23,6 @@ const nextConfig = {
         hostname: "api.niinfomed.com",
         pathname: "/api/**",
       },
-      // ✅ Keep IP as fallback for development
       {
         protocol: "http",
         hostname: "api.niinfomed.com",
@@ -50,16 +54,15 @@ const nextConfig = {
   },
 
   trailingSlash: false,
+  staticPageGenerationTimeout: 120,
+  skipTrailingSlashRedirect: true,
 
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
 
   async rewrites() {
-    // Default to domain, fallback to IP
-    const CMS_URL =
-      process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
-
+    const CMS_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "https://api.niinfomed.com";
     const cleanCMSUrl = CMS_URL.replace(/\/$/, "");
 
     return [
@@ -98,6 +101,7 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-XSS-Protection", value: "1; mode=block" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
       {
@@ -112,6 +116,12 @@ const nextConfig = {
             key: "Access-Control-Allow-Headers",
             value: "Content-Type, Authorization",
           },
+        ],
+      },
+      {
+        source: "/_next/data/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
     ];
