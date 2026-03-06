@@ -1,7 +1,8 @@
+// lib/api.js
 import axios from 'axios';
 
 // API URL configuration - use environment variable with fallback to Oracle CMS
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://161.118.184.217';
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
 const DEFAULT_LANG = 'en';
 
 // Helper to get base URL without double protocol
@@ -12,7 +13,7 @@ const getBaseUrl = () => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
-    return `http://${url}`;
+    return `https://${url}`; // Default to HTTPS
   }
   return '';
 };
@@ -35,7 +36,9 @@ const api = axios.create({
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
-    console.log(`📤 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📤 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    }
     return config;
   },
   (error) => {
@@ -47,14 +50,38 @@ api.interceptors.request.use(
 // Add response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    console.log(`📥 API Response: ${response.status} ${response.config.url}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📥 API Response: ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {
     if (error.response) {
-      console.error('❌ API Response Error:', error.response.status, error.config?.url);
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error('❌ API Response Error:', {
+        status: error.response.status,
+        url: error.config?.url,
+        data: error.response.data
+      });
+      
+      // Handle specific status codes
+      if (error.response.status === 404) {
+        return Promise.reject(new Error('Resource not found'));
+      } else if (error.response.status === 401) {
+        return Promise.reject(new Error('Unauthorized access'));
+      } else if (error.response.status === 403) {
+        return Promise.reject(new Error('Forbidden access'));
+      } else if (error.response.status === 500) {
+        return Promise.reject(new Error('Internal server error'));
+      }
     } else if (error.request) {
+      // The request was made but no response was received
       console.error('❌ API No Response:', error.config?.url);
+      return Promise.reject(new Error('No response from server'));
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('❌ API Request Setup Error:', error.message);
     }
     return Promise.reject(error);
   }
@@ -67,9 +94,9 @@ api.interceptors.response.use(
 export const getProxiedImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
-  // Handle Oracle CMS URL
-  if (imageUrl.includes('161.118.167.107')) {
-    return imageUrl.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
+  // Handle Oracle CMS URL (both IP and domain)
+  if (imageUrl.includes('161.118.167.107') || imageUrl.includes('api.niinfomed.com')) {
+    return imageUrl.replace(/https?:\/\/[^/]+\/media\//, '/cms-media/');
   }
 
   // Handle localhost patterns
@@ -107,24 +134,38 @@ export const getImageUrl = getProxiedImageUrl;
 
 // Helper to fetch with multiple endpoint attempts
 const tryEndpoints = async (endpoints, params = {}) => {
+  let lastError = null;
+  
   for (const endpoint of endpoints) {
     try {
-      console.log(`🔄 Trying endpoint: ${endpoint}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔄 Trying endpoint: ${endpoint}`);
+      }
+      
       const response = await api.get(endpoint, { params });
+      
       if (response.data) {
-        console.log(`✅ Success: ${endpoint}`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ Success: ${endpoint}`);
+        }
         return response;
       }
     } catch (error) {
-      console.log(`❌ Failed: ${endpoint}`);
+      lastError = error;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`❌ Failed: ${endpoint} - ${error.message}`);
+      }
       // Continue to next endpoint
     }
   }
-  throw new Error('All endpoints failed');
+  
+  throw lastError || new Error('All endpoints failed');
 };
 
 // Helper to handle different response formats
 const handleResponse = (data) => {
+  if (!data) return [];
+  
   if (Array.isArray(data)) {
     return data;
   } else if (data?.results) {
@@ -133,8 +174,43 @@ const handleResponse = (data) => {
     return data.items;
   } else if (data?.data) {
     return data.data;
+  } else if (data?.meta && data?.items) {
+    return data.items;
   }
+  
   return data || [];
+};
+
+// Helper to get total count from response
+const getTotalCount = (data) => {
+  if (!data) return 0;
+  
+  if (data.meta?.total_count) return data.meta.total_count;
+  if (data.count) return data.count;
+  if (Array.isArray(data)) return data.length;
+  if (data.results) return data.results.length;
+  if (data.items) return data.items.length;
+  
+  return 0;
+};
+
+/* =========================================================
+   ✅ HEALTH CHECK API
+========================================================= */
+
+export const checkHealth = async () => {
+  try {
+    const response = await api.get('/health/');
+    return {
+      status: 'healthy',
+      data: response.data
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      error: error.message
+    };
+  }
 };
 
 /* =========================================================
@@ -166,7 +242,7 @@ export const fetchLamininCitations = async (params = {}) => {
     };
   } catch (error) {
     console.error('Error fetching laminin citations:', error);
-    return { items: [], total: 0, offset: 0, limit };
+    return { items: [], total: 0, offset: 0, limit: params.limit || 20 };
   }
 };
 
@@ -271,7 +347,7 @@ export const fetchFeaturedLamininCitation = async (lang = DEFAULT_LANG) => {
 
 export const fetchLamininFamily = async (lang = DEFAULT_LANG) => {
   try {
-    const [isoforms, keyCitations] = await Promise.all([
+    const [isoforms, citationsResponse] = await Promise.all([
       fetchLamininIsoforms({ lang, limit: 50 }),
       fetchLamininCitations({ lang, limit: 5 })
     ]);
@@ -290,7 +366,7 @@ export const fetchLamininFamily = async (lang = DEFAULT_LANG) => {
         i.name?.includes('511')
       ),
       all: isoforms,
-      citations: keyCitations.items || []
+      citations: citationsResponse.items || []
     };
 
     return grouped;
@@ -312,10 +388,14 @@ export const fetchLamininFamily = async (lang = DEFAULT_LANG) => {
 
 export const fetchTopStories = async (limit = 10) => {
   try {
-    const response = await api.get('/articles/top-stories', {
-      params: { lang: DEFAULT_LANG, limit }
-    });
-    return response.data || [];
+    const endpoints = [
+      '/articles/top-stories/',
+      '/articles/top-stories',
+      '/articles/featured/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang: DEFAULT_LANG, limit });
+    return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching top stories:', error);
     return [];
@@ -324,9 +404,13 @@ export const fetchTopStories = async (limit = 10) => {
 
 export const fetchArticleBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/articles/${slug}`, {
-      params: { lang }
-    });
+    const endpoints = [
+      `/articles/${slug}/`,
+      `/articles/${slug}`,
+      `/articles/detail/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang });
     return response.data;
   } catch (error) {
     console.error(`Error fetching article ${slug}:`, error);
@@ -338,8 +422,26 @@ export const fetchArticle = fetchArticleBySlug;
 
 export const fetchArticlePaths = async () => {
   try {
-    const response = await api.get('/articles/paths');
-    return handleResponse(response.data);
+    const endpoints = [
+      '/articles/paths/',
+      '/articles/paths',
+      '/articles/'
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await api.get(endpoint, { params: { limit: 100 } });
+        
+        if (response.data) {
+          const items = handleResponse(response.data);
+          return items.map(item => item.slug || item).filter(Boolean);
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+    
+    return [];
   } catch (error) {
     console.error('Error fetching article paths:', error);
     return [];
@@ -348,9 +450,13 @@ export const fetchArticlePaths = async () => {
 
 export const fetchRelatedArticles = async (slug, limit = 3) => {
   try {
-    const response = await api.get(`/articles/${slug}/related`, {
-      params: { limit }
-    });
+    const endpoints = [
+      `/articles/${slug}/related/`,
+      `/articles/${slug}/related`,
+      `/articles/related/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching related articles:', error);
@@ -360,7 +466,13 @@ export const fetchRelatedArticles = async (slug, limit = 3) => {
 
 export const fetchHealthTopics = async () => {
   try {
-    const response = await api.get('/articles/health-topics');
+    const endpoints = [
+      '/articles/health-topics/',
+      '/articles/health-topics',
+      '/health-topics/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit: 50 });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching health topics:', error);
@@ -374,9 +486,13 @@ export const fetchHealthTopics = async () => {
 
 export const fetchLatestNews = async (limit = 10) => {
   try {
-    const response = await api.get('/news/latest', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/news/latest/',
+      '/news/latest',
+      '/news/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching latest news:', error);
@@ -386,9 +502,13 @@ export const fetchLatestNews = async (limit = 10) => {
 
 export const fetchNewsBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/news/${slug}`, {
-      params: { lang }
-    });
+    const endpoints = [
+      `/news/${slug}/`,
+      `/news/${slug}`,
+      `/news/detail/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang });
     return response.data;
   } catch (error) {
     console.error(`Error fetching news ${slug}:`, error);
@@ -398,9 +518,13 @@ export const fetchNewsBySlug = async (slug, lang = DEFAULT_LANG) => {
 
 export const fetchRelatedNews = async (slug, limit = 3) => {
   try {
-    const response = await api.get(`/news/${slug}/related`, {
-      params: { limit }
-    });
+    const endpoints = [
+      `/news/${slug}/related/`,
+      `/news/${slug}/related`,
+      `/news/related/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching related news:', error);
@@ -410,8 +534,26 @@ export const fetchRelatedNews = async (slug, limit = 3) => {
 
 export const fetchNewsPaths = async () => {
   try {
-    const response = await api.get('/news/paths');
-    return handleResponse(response.data);
+    const endpoints = [
+      '/news/paths/',
+      '/news/paths',
+      '/news/'
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await api.get(endpoint, { params: { limit: 100 } });
+        
+        if (response.data) {
+          const items = handleResponse(response.data);
+          return items.map(item => item.slug || item).filter(Boolean);
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+    
+    return [];
   } catch (error) {
     console.error('Error fetching news paths:', error);
     return [];
@@ -421,10 +563,7 @@ export const fetchNewsPaths = async () => {
 export const fetchNews = async (params = {}) => {
   try {
     const { limit = 10, lang = DEFAULT_LANG } = params;
-    const response = await api.get('/news/latest', {
-      params: { limit, lang }
-    });
-    return handleResponse(response.data);
+    return await fetchLatestNews(limit);
   } catch (error) {
     console.error('Error fetching news:', error);
     return [];
@@ -432,14 +571,18 @@ export const fetchNews = async (params = {}) => {
 };
 
 /* =========================================================
-   ✅ WELLNESS API - FIXED WITH TRAILING SLASH
+   ✅ WELLNESS API
 ========================================================= */
 
 export const fetchWellnessTopics = async (limit = 50) => {
   try {
-    const response = await api.get('/wellness/topics/', {  // ✅ Fixed: Added trailing slash
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/wellness/topics/',
+      '/wellness/topics',
+      '/wellness/'
+    ];
+    
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching wellness topics:', error);
@@ -482,7 +625,7 @@ export const fetchLatestConditions = async (limit = 20) => {
     const endpoints = [
       '/conditions/latest/',
       '/conditions/',
-      '/conditions/latest'
+      '/conditions'
     ];
     
     const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
@@ -495,14 +638,10 @@ export const fetchLatestConditions = async (limit = 20) => {
 
 export const fetchConditionsIndex = async () => {
   try {
-    console.log('🔍 Fetching conditions index from Oracle CMS');
-    
     const endpoints = [
       '/conditions/',
-      '/conditions',
       '/conditions/index/',
-      '/conditions/latest/',
-      '/v2/pages/?type=conditions.ConditionPage&fields=title,slug,id'
+      '/conditions/latest/'
     ];
     
     const response = await tryEndpoints(endpoints, { limit: 100, lang: DEFAULT_LANG });
@@ -515,13 +654,10 @@ export const fetchConditionsIndex = async () => {
 
 export const fetchConditionBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    console.log(`🔍 Fetching condition: ${slug}`);
-    
     const endpoints = [
       `/conditions/${slug}/`,
       `/conditions/${slug}`,
-      `/conditions/detail/${slug}/`,
-      `/v2/pages/?slug=${slug}&type=conditions.ConditionPage`,
+      `/conditions/detail/${slug}/`
     ];
     
     // If slug contains an ID at the end (format: name-123)
@@ -529,7 +665,6 @@ export const fetchConditionBySlug = async (slug, lang = DEFAULT_LANG) => {
     const lastPart = parts[parts.length - 1];
     if (/^\d+$/.test(lastPart)) {
       endpoints.unshift(`/conditions/by_id/${lastPart}/`);
-      endpoints.unshift(`/v2/pages/${lastPart}/`);
     }
     
     const response = await tryEndpoints(endpoints, { lang });
@@ -544,62 +679,21 @@ export const fetchCondition = fetchConditionBySlug;
 
 export const fetchConditionPaths = async () => {
   try {
-    console.log('🔍 Fetching condition paths');
-    
-    const endpoints = [
-      '/conditions/paths',
-      '/conditions/paths/',
-      '/conditions/',
-      '/v2/pages/?type=conditions.ConditionPage&fields=slug,title,id',
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await api.get(endpoint, { params: { limit: 100 } });
-        
-        if (response.data) {
-          // Handle different response formats
-          if (Array.isArray(response.data)) {
-            // If it's an array of strings (slugs)
-            if (response.data.every(item => typeof item === 'string')) {
-              return response.data;
-            }
-            // If it's an array of objects with slugs
-            return response.data.map(item => {
-              if (item.slug) return item.slug;
-              if (item.title) {
-                const slug = item.title.toLowerCase()
-                  .replace(/[^\w\s-]/g, '')
-                  .replace(/\s+/g, '-');
-                return item.id ? `${slug}-${item.id}` : slug;
-              }
-              return null;
-            }).filter(Boolean);
-          } else if (response.data.results) {
-            return response.data.results.map(item => item.slug).filter(Boolean);
-          } else if (response.data.items) {
-            return response.data.items.map(item => item.slug).filter(Boolean);
-          } else if (response.data.paths) {
-            return response.data.paths;
-          }
-        }
-      } catch (err) {
-        // Continue to next endpoint
-      }
-    }
-    
-    // Fallback: fetch all conditions and generate slugs
     const conditions = await fetchConditionsIndex();
+    
     return conditions.map(c => {
-      const title = c.title || c.name;
-      const id = c.id;
-      if (title && id) {
-        const slug = title.toLowerCase()
+      // Try to get slug directly
+      if (c.slug) return c.slug;
+      
+      // Generate slug from title with ID
+      if (c.title && c.id) {
+        const slug = c.title.toLowerCase()
           .replace(/[^\w\s-]/g, '')
           .replace(/\s+/g, '-');
-        return `${slug}-${id}`;
+        return `${slug}-${c.id}`;
       }
-      return c.slug;
+      
+      return null;
     }).filter(Boolean);
     
   } catch (error) {
@@ -612,9 +706,15 @@ export const fetchConditionPaths = async () => {
    ✅ DRUGS API
 ========================================================= */
 
-export const fetchDrugBySlug = async (slug) => {
+export const fetchDrugBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/drugs/${slug}`);
+    const endpoints = [
+      `/drugs/${slug}/`,
+      `/drugs/${slug}`,
+      `/drugs/detail/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang });
     return response.data;
   } catch (error) {
     console.error(`Error fetching drug ${slug}:`, error);
@@ -624,15 +724,14 @@ export const fetchDrugBySlug = async (slug) => {
 
 export const fetchDrugDetails = fetchDrugBySlug;
 
-export const getDrugs = async () => {
+export const getDrugs = async (limit = 100) => {
   try {
     const endpoints = [
       '/drugs/',
-      '/drugs',
-      '/drugs/index/'
+      '/drugs'
     ];
     
-    const response = await tryEndpoints(endpoints, { lang: DEFAULT_LANG, limit: 100 });
+    const response = await tryEndpoints(endpoints, { lang: DEFAULT_LANG, limit });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching drugs:', error);
@@ -641,12 +740,12 @@ export const getDrugs = async () => {
 };
 
 export const fetchDrugsIndex = async () => {
-  return getDrugs();
+  return getDrugs(100);
 };
 
 export const fetchDrugPaths = async () => {
   try {
-    const drugs = await getDrugs();
+    const drugs = await getDrugs(100);
     return drugs.map(d => d.slug).filter(Boolean);
   } catch (error) {
     console.error('Error fetching drug paths:', error);
@@ -656,7 +755,8 @@ export const fetchDrugPaths = async () => {
 
 export const fetchDrugs = async (params = {}) => {
   try {
-    return await getDrugs();
+    const { limit = 20 } = params;
+    return await getDrugs(limit);
   } catch (error) {
     console.error('Error fetching drugs:', error);
     return [];
@@ -669,10 +769,13 @@ export const fetchDrugs = async (params = {}) => {
 
 export const fetchHomeopathyTopics = async (limit = 20) => {
   try {
-    const response = await api.get('/homeopathy/topics/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/homeopathy/topics/',
+      '/homeopathy/topics',
+      '/homeopathy/'
+    ];
     
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching homeopathy topics:', error);
@@ -696,10 +799,13 @@ export const fetchHomeopathyPaths = async () => {
 
 export const fetchAyurvedaTopics = async (limit = 20) => {
   try {
-    const response = await api.get('/ayurveda/topics/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/ayurveda/topics/',
+      '/ayurveda/topics',
+      '/ayurveda/'
+    ];
     
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching ayurveda topics:', error);
@@ -723,10 +829,13 @@ export const fetchAyurvedaPaths = async () => {
 
 export const fetchYogaTopics = async (limit = 20) => {
   try {
-    const response = await api.get('/yoga/topics/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/yoga/topics/',
+      '/yoga/topics',
+      '/yoga/'
+    ];
     
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching yoga topics:', error);
@@ -752,7 +861,6 @@ export const fetchVideos = async (limit = 20) => {
   try {
     const endpoints = [
       '/videos/',
-      '/videos',
       '/videos/latest/'
     ];
     
@@ -780,10 +888,13 @@ export const fetchVideoPaths = async () => {
 
 export const fetchSocialPosts = async (limit = 20) => {
   try {
-    const response = await api.get('/social/posts/', {
-      params: { limit, lang: DEFAULT_LANG }
-    });
+    const endpoints = [
+      '/social/posts/',
+      '/social/posts',
+      '/social/'
+    ];
     
+    const response = await tryEndpoints(endpoints, { limit, lang: DEFAULT_LANG });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching social posts:', error);
@@ -798,10 +909,12 @@ export const fetchSocialPosts = async (limit = 20) => {
 export const fetchRemedyArticles = async (params = {}) => {
   try {
     const { lang = DEFAULT_LANG, limit = 20 } = params;
-    const response = await api.get('/remedies/', { 
-      params: { lang, limit } 
-    });
+    const endpoints = [
+      '/remedies/',
+      '/remedies'
+    ];
     
+    const response = await tryEndpoints(endpoints, { lang, limit });
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching remedy articles:', error);
@@ -811,9 +924,12 @@ export const fetchRemedyArticles = async (params = {}) => {
 
 export const fetchRemedyBySlug = async (slug, lang = DEFAULT_LANG) => {
   try {
-    const response = await api.get(`/remedies/${slug}/`, {
-      params: { lang }
-    });
+    const endpoints = [
+      `/remedies/${slug}/`,
+      `/remedies/${slug}`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang });
     return response.data;
   } catch (error) {
     console.error(`Error fetching remedy ${slug}:`, error);
@@ -837,7 +953,12 @@ export const fetchRemedyPaths = async () => {
 
 export const fetchReviewers = async () => {
   try {
-    const response = await api.get('/reviewers/');
+    const endpoints = [
+      '/reviewers/',
+      '/reviewers'
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching reviewers:', error);
@@ -858,7 +979,12 @@ export const fetchReviewerPaths = async () => {
 export const fetchReviewerBySlug = async (slug) => {
   try {
     const cleanSlug = slug.replace(/^\/+|\/+$/g, '');
-    const response = await api.get(`/reviewers/${cleanSlug}/`);
+    const endpoints = [
+      `/reviewers/${cleanSlug}/`,
+      `/reviewers/${cleanSlug}`
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return response.data;
   } catch (error) {
     console.error('Reviewer fetch error:', error);
@@ -872,7 +998,12 @@ export const fetchReviewerBySlug = async (slug) => {
 
 export const fetchAuthors = async () => {
   try {
-    const response = await api.get('/authors/');
+    const endpoints = [
+      '/authors/',
+      '/authors'
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching authors:', error);
@@ -893,7 +1024,12 @@ export const fetchAuthorPaths = async () => {
 export const getAuthorDetail = async (slug) => {
   try {
     const cleanSlug = slug.replace(/^\/+|\/+$/g, '');
-    const response = await api.get(`/authors/${cleanSlug}/`);
+    const endpoints = [
+      `/authors/${cleanSlug}/`,
+      `/authors/${cleanSlug}`
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return response.data;
   } catch (error) {
     console.error('Author fetch error:', error);
@@ -907,7 +1043,12 @@ export const getAuthorDetail = async (slug) => {
 
 export const fetchTrending = async () => {
   try {
-    const response = await api.get('/trending/');
+    const endpoints = [
+      '/trending/',
+      '/trending'
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return handleResponse(response.data);
   } catch (error) {
     console.error('Error fetching trending:', error);
@@ -917,7 +1058,12 @@ export const fetchTrending = async () => {
 
 export const fetchTrendingBySlug = async (slug) => {
   try {
-    const response = await api.get(`/trending/${slug}/`);
+    const endpoints = [
+      `/trending/${slug}/`,
+      `/trending/${slug}`
+    ];
+    
+    const response = await tryEndpoints(endpoints);
     return response.data;
   } catch (error) {
     console.error(`Error fetching trending ${slug}:`, error);
@@ -930,12 +1076,29 @@ export const fetchTrendingBySlug = async (slug) => {
 ========================================================= */
 
 export const searchContent = async (query, filters = {}) => {
+  if (!query || query.length < 2) {
+    return {
+      articles: [],
+      conditions: [],
+      drugs: [],
+      news: [],
+      wellness: [],
+      ayurveda: [],
+      homeopathy: [],
+      yoga: [],
+      videos: [],
+      lamininCitations: [],
+      lamininIsoforms: []
+    };
+  }
+  
   try {
-    const response = await api.get('/search', {
+    const response = await api.get('/search/', {
       params: {
         q: query,
         type: filters.type || '',
         lang: DEFAULT_LANG,
+        limit: filters.limit || 10,
         include_laminin: true
       }
     });
@@ -970,6 +1133,54 @@ export const searchContent = async (query, filters = {}) => {
       lamininCitations: [],
       lamininIsoforms: []
     };
+  }
+};
+
+/* =========================================================
+   ✅ PAGES API
+========================================================= */
+
+export const fetchPageBySlug = async (slug, lang = DEFAULT_LANG) => {
+  try {
+    const endpoints = [
+      `/pages/${slug}/`,
+      `/pages/${slug}`,
+      `/pages/detail/${slug}/`
+    ];
+    
+    const response = await tryEndpoints(endpoints, { lang });
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching page ${slug}:`, error);
+    throw error;
+  }
+};
+
+export const fetchPagePaths = async () => {
+  try {
+    const endpoints = [
+      '/pages/paths/',
+      '/pages/paths',
+      '/pages/'
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await api.get(endpoint, { params: { limit: 100 } });
+        
+        if (response.data) {
+          const items = handleResponse(response.data);
+          return items.map(item => item.slug || item).filter(Boolean);
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Error fetching page paths:', error);
+    return [];
   }
 };
 
