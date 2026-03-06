@@ -12,13 +12,13 @@ import { useMemo } from "react";
    ✅ UPDATED: Use environment variable for CMS URL
    No more hardcoded localhost/0.0.0.0/127.0.0.1
 ========================================================= */
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
 
 /* =========================================================
    ✅ FIX: Mobile cannot fetch localhost / 127.0.0.1
 ========================================================= */
 const getSafeCMSUrl = () => {
-  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+  let base = process.env.NEXT_PUBLIC_CMS_API_URL || "https://161.118.184.217";
 
   if (typeof window !== "undefined") {
     const frontendHost = window.location.hostname;
@@ -76,9 +76,9 @@ const getProxiedImageUrl = (url) => {
   if (!url) return null;
 
   // Handle Oracle CMS URL
-  if (url.includes('161.118.167.107')) {
+  if (url.includes('161.118.184.217')) {
     return url
-      .replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/')
+      .replace(/https?:\/\/161\.118\.184\.217\/media\//, '/cms-media/')
       .replace('/cms-media/media/', '/cms-media/');
   }
 
