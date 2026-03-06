@@ -1,112 +1,19 @@
+// pages/wellness/index.js
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import axios from 'axios';
 import { NextSeo } from 'next-seo';
 import FeaturedArticle from '../../components/FeaturedArticle';
-import { fetchWellnessTopics } from '../../utils/api';
+import ImageWithFallback from '../../components/ImageWithFallback';
+import { 
+  fetchWellnessTopics, 
+  getProxiedImageUrl,
+  tryEndpoints 
+} from '../../utils/api';
 
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
-   ✅ IMAGE HELPER FUNCTIONS
-========================================================= */
-
-/**
- * Get proxied image URL for Oracle CMS
- */
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Agar already proxied hai toh wahi return karo
-  if (url.startsWith('/cms-media/')) {
-    return url;
-  }
-
-  // Oracle CMS URL handle karo
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
-  }
-
-  // Localhost patterns handle karo
-  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
-    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
-  }
-  
-  // Relative media URLs handle karo
-  if (url.startsWith('/media/')) {
-    return `/cms-media${url.replace('/media/', '/')}`;
-  }
-  
-  // Full URLs (Unsplash, etc.) as they are
-  if (url.startsWith('http')) {
-    return url;
-  }
-  
-  return url;
-};
-
-/**
- * Image component with fallback for errors
- */
-const ImageWithFallback = ({ src, alt, className, width, height, priority = false, ...props }) => {
-  const [error, setError] = useState(false);
-  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
-
-  useEffect(() => {
-    setImageSrc(getProxiedImageUrl(src));
-    setError(false);
-  }, [src]);
-
-  if (error || !imageSrc) {
-    return (
-      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
-        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={imageSrc}
-      alt={alt || "Wellness image"}
-      className={className}
-      width={width}
-      height={height}
-      onError={() => setError(true)}
-      loading={priority ? "eager" : "lazy"}
-      decoding={priority ? "sync" : "async"}
-      {...props}
-    />
-  );
-};
-
-export default function WellnessIndex({ initialTopics = [] }) {
+export default function WellnessIndex({ initialTopics = [], error: initialError }) {
   const [topics, setTopics] = useState(initialTopics);
   const [loading, setLoading] = useState(!initialTopics.length);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(initialError);
 
   useEffect(() => {
     // If we already have topics from getStaticProps, don't fetch again
@@ -120,47 +27,11 @@ export default function WellnessIndex({ initialTopics = [] }) {
       try {
         setLoading(true);
         
-        // Try multiple endpoints
-        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
+        const topicsData = await fetchWellnessTopics(50);
         
-        const endpoints = [
-          `${baseUrl}/api/wellness/topics/`,
-          `${baseUrl}/api/wellness/topics`,
-          `${baseUrl}/api/wellness/`,
-          `${baseUrl}/api/wellness/latest/`,
-          `${baseUrl}/api/v2/pages/?type=wellness.WellnessPage&fields=title,slug,image,summary`,
-        ];
-
-        let topicsData = [];
-        
-        for (const endpoint of endpoints) {
-          try {
-            const response = await fetch(endpoint);
-            if (response.ok) {
-              const data = await response.json();
-              
-              // Handle different response formats
-              if (Array.isArray(data)) {
-                topicsData = data;
-                console.log(`✅ Found ${data.length} topics at: ${endpoint}`);
-                break;
-              } else if (data.results) {
-                topicsData = data.results;
-                console.log(`✅ Found ${data.results.length} topics at: ${endpoint}`);
-                break;
-              } else if (data.items) {
-                topicsData = data.items;
-                console.log(`✅ Found ${data.items.length} topics at: ${endpoint}`);
-                break;
-              }
-            }
-          } catch (err) {
-            console.log(`❌ Endpoint failed: ${endpoint}`);
-          }
-        }
-
-        console.log('Wellness topics loaded:', topicsData);
-        setTopics(topicsData);
+        console.log('Wellness topics loaded:', topicsData?.length || 0);
+        setTopics(topicsData || []);
+        setError(null);
       } catch (err) {
         console.error('Error loading wellness topics:', err);
         setError(err.message);
@@ -177,9 +48,16 @@ export default function WellnessIndex({ initialTopics = [] }) {
       <div className="container mx-auto px-4 py-12">
         <div className="animate-pulse">
           <div className="h-8 bg-neutral-200 rounded w-1/3 mb-8"></div>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="h-64 bg-neutral-200 rounded"></div>
+              <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="h-48 bg-neutral-200"></div>
+                <div className="p-5">
+                  <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-neutral-200 rounded w-full mb-2"></div>
+                  <div className="h-3 bg-neutral-200 rounded w-2/3"></div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -224,9 +102,17 @@ export default function WellnessIndex({ initialTopics = [] }) {
               alt: 'Wellness Topics',
             },
           ],
+          siteName: 'Niinfomed',
+          type: 'website',
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
         }}
       />
 
+      {/* Hero Section */}
       <div className="bg-gradient-to-r from-green-50 to-blue-50 py-12">
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold text-neutral-900 mb-4">Well-Being</h1>
@@ -256,25 +142,25 @@ export default function WellnessIndex({ initialTopics = [] }) {
           <>
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold">All Topics</h2>
-              <p className="text-neutral-600">{topics.length} articles</p>
+              <p className="text-neutral-600">{topics.length} article{topics.length !== 1 ? 's' : ''}</p>
             </div>
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {topics.map((topic) => {
                 // Prepare article data for FeaturedArticle component
                 const articleData = {
-                  id: topic.id,
+                  id: topic.id || topic.slug,
                   title: topic.title,
                   slug: topic.slug,
                   summary: topic.summary || topic.introduction || topic.subtitle || 'Learn more about this wellness topic',
                   image: getProxiedImageUrl(topic.image || topic.thumbnail),
-                  category: { name: 'Wellness', slug: 'wellness' },
+                  category: topic.category || { name: 'Wellness', slug: 'wellness' },
                   published_date: topic.published_date || topic.first_published_at || topic.created_at,
                 };
 
                 return (
                   <FeaturedArticle
-                    key={topic.id}
+                    key={topic.id || topic.slug}
                     article={articleData}
                     href={`/wellness/${topic.slug}`}
                   />
@@ -290,28 +176,33 @@ export default function WellnessIndex({ initialTopics = [] }) {
             <h3 className="text-xl font-bold mb-4">Wellness Tools</h3>
             <ul className="space-y-3">
               <li>
-                <Link href="/tools#bmi" className="flex items-center gap-2 text-primary hover:underline">
-                  <span>📊</span> BMI Calculator
+                <Link href="/tools#bmi" className="flex items-center gap-2 text-primary hover:underline group">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">📊</span>
+                  <span>BMI Calculator</span>
                 </Link>
               </li>
               <li>
-                <Link href="/tools#calorie" className="flex items-center gap-2 text-primary hover:underline">
-                  <span>🔥</span> Calorie Calculator
+                <Link href="/tools#calorie" className="flex items-center gap-2 text-primary hover:underline group">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">🔥</span>
+                  <span>Calorie Calculator</span>
                 </Link>
               </li>
               <li>
-                <Link href="/tools#water" className="flex items-center gap-2 text-primary hover:underline">
-                  <span>💧</span> Water Intake Calculator
+                <Link href="/tools#water" className="flex items-center gap-2 text-primary hover:underline group">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">💧</span>
+                  <span>Water Intake Calculator</span>
                 </Link>
               </li>
               <li>
-                <Link href="/tools#stress" className="flex items-center gap-2 text-primary hover:underline">
-                  <span>🧘</span> Stress Assessment
+                <Link href="/tools#stress" className="flex items-center gap-2 text-primary hover:underline group">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">🧘</span>
+                  <span>Stress Assessment</span>
                 </Link>
               </li>
               <li>
-                <Link href="/tools#sleep" className="flex items-center gap-2 text-primary hover:underline">
-                  <span>😴</span> Sleep Calculator
+                <Link href="/tools#sleep" className="flex items-center gap-2 text-primary hover:underline group">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">😴</span>
+                  <span>Sleep Calculator</span>
                 </Link>
               </li>
             </ul>
@@ -321,26 +212,49 @@ export default function WellnessIndex({ initialTopics = [] }) {
             <h3 className="text-xl font-bold mb-4">Healthy Living Tips</h3>
             <ol className="space-y-3 list-decimal list-inside">
               <li className="text-neutral-700">
-                <strong>Stay Physically Active</strong>
-                <p className="text-sm text-neutral-600 ml-6">Aim for at least 150 minutes of moderate activity or 75 minutes of vigorous activity each week.</p>
+                <strong className="text-neutral-900">Stay Physically Active</strong>
+                <p className="text-sm text-neutral-600 ml-6 mt-1">Aim for at least 150 minutes of moderate activity or 75 minutes of vigorous activity each week.</p>
               </li>
               <li className="text-neutral-700">
-                <strong>Eat a Balanced Diet</strong>
-                <p className="text-sm text-neutral-600 ml-6">Focus on fruits, vegetables, whole grains, lean proteins, and healthy fats.</p>
+                <strong className="text-neutral-900">Eat a Balanced Diet</strong>
+                <p className="text-sm text-neutral-600 ml-6 mt-1">Focus on fruits, vegetables, whole grains, lean proteins, and healthy fats.</p>
               </li>
               <li className="text-neutral-700">
-                <strong>Get Enough Sleep</strong>
-                <p className="text-sm text-neutral-600 ml-6">Adults should aim for 7-9 hours of quality sleep each night.</p>
+                <strong className="text-neutral-900">Get Enough Sleep</strong>
+                <p className="text-sm text-neutral-600 ml-6 mt-1">Adults should aim for 7-9 hours of quality sleep each night.</p>
               </li>
               <li className="text-neutral-700">
-                <strong>Manage Stress</strong>
-                <p className="text-sm text-neutral-600 ml-6">Practice stress-reduction techniques like mindfulness, meditation, or deep breathing.</p>
+                <strong className="text-neutral-900">Manage Stress</strong>
+                <p className="text-sm text-neutral-600 ml-6 mt-1">Practice stress-reduction techniques like mindfulness, meditation, or deep breathing.</p>
               </li>
               <li className="text-neutral-700">
-                <strong>Stay Hydrated</strong>
-                <p className="text-sm text-neutral-600 ml-6">Drink enough water throughout the day. The recommended amount varies by individual needs.</p>
+                <strong className="text-neutral-900">Stay Hydrated</strong>
+                <p className="text-sm text-neutral-600 ml-6 mt-1">Drink enough water throughout the day. The recommended amount varies by individual needs.</p>
               </li>
             </ol>
+          </div>
+        </div>
+
+        {/* Newsletter Signup */}
+        <div className="mt-16 bg-gradient-to-r from-green-600 to-blue-600 rounded-2xl p-8 text-white">
+          <div className="max-w-3xl mx-auto text-center">
+            <h3 className="text-2xl font-bold mb-2">Stay Updated with Wellness Tips</h3>
+            <p className="mb-6 text-green-100">Get the latest wellness articles and healthy living tips delivered to your inbox.</p>
+            <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="flex-1 px-4 py-3 rounded-lg text-neutral-900 focus:outline-none focus:ring-2 focus:ring-white"
+                required
+                aria-label="Email for newsletter"
+              />
+              <button
+                type="submit"
+                className="px-6 py-3 bg-white text-green-600 font-semibold rounded-lg hover:bg-green-50 transition-colors"
+              >
+                Subscribe
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -348,52 +262,18 @@ export default function WellnessIndex({ initialTopics = [] }) {
   );
 }
 
-// ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+// ✅ STATIC GENERATION
 export async function getStaticProps() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || "http://161.118.167.107";
-    
-    const endpoints = [
-      `${baseUrl}/api/wellness/topics/`,
-      `${baseUrl}/api/wellness/topics`,
-      `${baseUrl}/api/wellness/`,
-      `${baseUrl}/api/wellness/latest/`,
-      `${baseUrl}/api/v2/pages/?type=wellness.WellnessPage&fields=title,slug,image,summary`,
-    ];
-
     console.log("🔍 Fetching wellness topics from Oracle CMS...");
     
-    let topics = [];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { 
-          timeout: 10000,
-          params: { limit: 50, lang: "en" }
-        });
-        
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          topics = data;
-          break;
-        } else if (data.results) {
-          topics = data.results;
-          break;
-        } else if (data.items) {
-          topics = data.items;
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
+    const topics = await fetchWellnessTopics(50);
 
-    console.log(`✅ Found ${topics.length} wellness topics`);
+    console.log(`✅ Found ${topics?.length || 0} wellness topics`);
     
     return {
       props: {
-        initialTopics: topics,
+        initialTopics: topics || [],
       },
       revalidate: 3600, // Revalidate every hour
     };
@@ -402,8 +282,9 @@ export async function getStaticProps() {
     return {
       props: {
         initialTopics: [],
+        error: 'Failed to load wellness topics. Please try again later.',
       },
-      revalidate: 60,
+      revalidate: 60, // Try again in 60 seconds
     };
   }
 }
