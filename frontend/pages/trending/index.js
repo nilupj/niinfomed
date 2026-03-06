@@ -1,160 +1,39 @@
-import { useState, useEffect } from 'react';
+// pages/trending/index.js
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import axios from 'axios';
 import { NextSeo } from 'next-seo';
 import Layout from '../../components/Layout';
+import ImageWithFallback from '../../components/ImageWithFallback';
+import { 
+  fetchTrending,
+  getProxiedImageUrl,
+  formatDateDisplay
+} from '../../utils/api';
 
-// Oracle CMS URL
-const CMS_API_URL = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-
-/* =========================================================
-   ✅ HELPER FUNCTION FOR MULTIPLE ENDPOINT ATTEMPTS
-========================================================= */
-const tryFetchFromMultipleEndpoints = async (endpoints = [], config = {}) => {
-  for (let url of endpoints) {
-    try {
-      console.log(`🔍 Trying endpoint: ${url}`);
-      const res = await axios.get(url, config);
-      if (res?.data) {
-        console.log(`✅ Success from: ${url}`);
-        return { data: res.data, usedUrl: url };
-      }
-    } catch (err) {
-      console.log(`❌ Failed: ${url}`);
-    }
-  }
-  return { data: null, usedUrl: null };
-};
-
-/* =========================================================
-   ✅ IMAGE HELPER FUNCTIONS
-========================================================= */
-
-const getProxiedImageUrl = (url) => {
-  if (!url) return null;
-
-  // Already proxied
-  if (url.startsWith('/cms-media/')) {
-    return url;
-  }
-
-  // Oracle CMS
-  if (url.includes('161.118.167.107')) {
-    return url.replace(/https?:\/\/161\.118\.167\.107\/media\//, '/cms-media/');
-  }
-
-  // Localhost patterns
-  if (url.includes('0.0.0.0:8001') || url.includes('127.0.0.1:8001') || url.includes('localhost:8001')) {
-    return url.replace(/https?:\/\/[^\/]+\/media\//, '/cms-media/');
-  }
-  
-  // Relative media URLs
-  if (url.startsWith('/media/')) {
-    return `/cms-media${url.replace('/media/', '/')}`;
-  }
-  
-  // Full URLs (Unsplash, etc.)
-  if (url.startsWith('http')) {
-    return url;
-  }
-  
-  return url;
-};
-
-const ImageWithFallback = ({ src, alt, className, width, height, priority = false }) => {
-  const [error, setError] = useState(false);
-  const [imageSrc, setImageSrc] = useState(getProxiedImageUrl(src));
-
-  useEffect(() => {
-    setImageSrc(getProxiedImageUrl(src));
-    setError(false);
-  }, [src]);
-
-  if (error || !imageSrc) {
-    return (
-      <div className={`bg-gray-200 flex items-center justify-center ${className}`} style={{ width, height }}>
-        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={imageSrc}
-      alt={alt || 'Trending image'}
-      className={className}
-      width={width}
-      height={height}
-      onError={() => setError(true)}
-      loading={priority ? 'eager' : 'lazy'}
-    />
-  );
-};
-
-export default function TrendingIndex() {
-  const [trendingItems, setTrendingItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function TrendingIndex({ trendingItems: initialItems = [], error: initialError = null }) {
+  const [trendingItems, setTrendingItems] = useState(initialItems);
+  const [loading, setLoading] = useState(!initialItems.length);
+  const [error, setError] = useState(initialError);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const itemsPerSlide = 6;
 
   useEffect(() => {
-    const fetchTrending = async () => {
+    // If we already have items from getStaticProps, don't fetch again
+    if (initialItems.length > 0) {
+      setTrendingItems(initialItems);
+      setLoading(false);
+      return;
+    }
+
+    const fetchTrendingData = async () => {
       try {
         setLoading(true);
         console.log('🔍 Fetching trending from Oracle CMS');
         
-        const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
+        const items = await fetchTrending();
         
-        // Try multiple endpoints
-        const endpoints = [
-          `${baseUrl}/api/trending/`,
-          `${baseUrl}/api/trending`,
-          `${baseUrl}/api/trending/list/`,
-          `${baseUrl}/trending/`,
-        ];
-        
-        let items = [];
-        
-        for (const endpoint of endpoints) {
-          try {
-            console.log(`🔄 Trying: ${endpoint}`);
-            const response = await fetch(endpoint, {
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-              },
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              console.log(`✅ Success from: ${endpoint}`);
-              
-              // Handle different response formats
-              if (Array.isArray(data)) {
-                items = data;
-                break;
-              } else if (data.results) {
-                items = data.results;
-                break;
-              } else if (data.items) {
-                items = data.items;
-                break;
-              } else if (data.data) {
-                items = data.data;
-                break;
-              }
-            }
-          } catch (err) {
-            console.log(`❌ Failed: ${endpoint}`);
-          }
-        }
-        
-        setTrendingItems(items);
+        setTrendingItems(items || []);
         setError(null);
       } catch (error) {
         console.error('❌ Error fetching trending items:', error);
@@ -164,8 +43,8 @@ export default function TrendingIndex() {
       }
     };
 
-    fetchTrending();
-  }, []);
+    fetchTrendingData();
+  }, [initialItems]);
 
   // Filter by category
   const filteredItems = selectedCategory
@@ -181,17 +60,17 @@ export default function TrendingIndex() {
 
   const totalSlides = Math.ceil(filteredItems.length / itemsPerSlide);
 
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % totalSlides);
-  };
+  }, [totalSlides]);
 
-  const prevSlide = () => {
+  const prevSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev - 1 + totalSlides) % totalSlides);
-  };
+  }, [totalSlides]);
 
-  const goToSlide = (index) => {
+  const goToSlide = useCallback((index) => {
     setCurrentSlide(index);
-  };
+  }, []);
 
   // Reset slider when category changes
   useEffect(() => {
@@ -207,7 +86,7 @@ export default function TrendingIndex() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [totalSlides, currentSlide]);
+  }, [totalSlides, nextSlide]);
 
   const getItemLink = (item) => {
     // Check for redirect
@@ -316,6 +195,13 @@ export default function TrendingIndex() {
               alt: 'Trending Health Topics',
             },
           ],
+          siteName: 'Niinfomed',
+          type: 'website',
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
         }}
       />
       
@@ -327,7 +213,7 @@ export default function TrendingIndex() {
               <h1 className="text-4xl font-bold text-gray-900">🔥 Trending Now</h1>
               {trendingItems.length > 0 && (
                 <span className="bg-red-100 text-red-800 text-sm font-medium px-3 py-1.5 rounded-full">
-                  {trendingItems.length} items
+                  {trendingItems.length} item{trendingItems.length !== 1 ? 's' : ''}
                 </span>
               )}
             </div>
@@ -347,6 +233,7 @@ export default function TrendingIndex() {
                       ? 'bg-red-600 text-white shadow-md'
                       : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                   }`}
+                  aria-label="Show all trending items"
                 >
                   All Trending
                 </button>
@@ -359,6 +246,7 @@ export default function TrendingIndex() {
                         ? 'bg-red-600 text-white shadow-md'
                         : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                     }`}
+                    aria-label={`Show ${category.name} items`}
                   >
                     {category.name}
                   </button>
@@ -393,7 +281,7 @@ export default function TrendingIndex() {
                           .slice(slideIndex * itemsPerSlide, (slideIndex + 1) * itemsPerSlide)
                           .map((item) => (
                             <Link
-                              key={item.id}
+                              key={item.id || item.slug}
                               href={getItemLink(item)}
                               className="group bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
                             >
@@ -406,6 +294,7 @@ export default function TrendingIndex() {
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                     width={400}
                                     height={300}
+                                    fallbackSrc="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=400&h=300"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
@@ -522,6 +411,29 @@ export default function TrendingIndex() {
               )}
             </div>
           )}
+
+          {/* Newsletter Section */}
+          <div className="mt-12 bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-8 text-white">
+            <div className="max-w-3xl mx-auto text-center">
+              <h3 className="text-2xl font-bold mb-2">Stay Updated with Trending Topics</h3>
+              <p className="mb-6 text-red-100">Get the latest trending health content delivered to your inbox.</p>
+              <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  className="flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-white"
+                  required
+                  aria-label="Email for newsletter"
+                />
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-white text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  Subscribe
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </Layout>
@@ -529,51 +441,19 @@ export default function TrendingIndex() {
 }
 
 /* =========================================================
-   ✅ STATIC GENERATION WITH MULTIPLE ENDPOINTS
+   ✅ STATIC GENERATION
 ========================================================= */
 export async function getStaticProps() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'http://161.118.167.107';
-    
-    const endpoints = [
-      `${baseUrl}/api/trending/`,
-      `${baseUrl}/api/trending`,
-      `${baseUrl}/api/trending/list/`,
-      `${baseUrl}/trending/`,
-    ];
-
     console.log("🔍 Fetching trending data from Oracle CMS...");
     
-    let trendingItems = [];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint, { timeout: 10000 });
-        const data = response.data;
-        
-        if (Array.isArray(data)) {
-          trendingItems = data;
-          break;
-        } else if (data.results) {
-          trendingItems = data.results;
-          break;
-        } else if (data.items) {
-          trendingItems = data.items;
-          break;
-        } else if (data.data) {
-          trendingItems = data.data;
-          break;
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint failed: ${endpoint}`);
-      }
-    }
+    const trendingItems = await fetchTrending();
 
-    console.log(`✅ Found ${trendingItems.length} trending items`);
+    console.log(`✅ Found ${trendingItems?.length || 0} trending items`);
     
     return {
       props: {
-        trendingItems,
+        trendingItems: trendingItems || [],
       },
       revalidate: 3600, // Revalidate every hour
     };
@@ -582,6 +462,7 @@ export async function getStaticProps() {
     return {
       props: {
         trendingItems: [],
+        error: 'Failed to load trending data. Please try again later.',
       },
       revalidate: 60,
     };
