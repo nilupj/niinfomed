@@ -2,7 +2,6 @@
 import { useRouter } from "next/router";
 import Link from "next/link";
 import SEO from "../../components/SEO";
-import axios from "axios";
 import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -460,6 +459,14 @@ const getAuthorSlug = (author) => {
   return null;
 };
 
+<<<<<<< HEAD
+=======
+const getReviewerDisplayName = (author) => {
+  if (!author) return null;
+  return author.name || author.display_name || author.full_name || null;
+};
+
+>>>>>>> 2ee6acc (update)
 const getReviewerSlug = (reviewer) => {
   if (!reviewer) return null;
   if (reviewer.slug) return reviewer.slug;
@@ -623,12 +630,19 @@ export default function AyurvedaDetail({
           });
 
           // Extract headings from body
+<<<<<<< HEAD
           if (processedBody || topic.body) {
             const bodyContent = processedBody || topic.body;
             if (bodyContent) {
               const extractedHeadings = extractHeadings(bodyContent);
               setHeadings(extractedHeadings);
             }
+=======
+          const bodyContent = processedBody || topic.body || "";
+          if (bodyContent) {
+            const extractedHeadings = extractHeadings(bodyContent);
+            setHeadings(extractedHeadings);
+>>>>>>> 2ee6acc (update)
           }
           
           setContentLoaded(true);
@@ -650,7 +664,11 @@ export default function AyurvedaDetail({
       mounted = false;
     };
   }, [topic, safeCMS, imageMap, initialProcessedBody, initialProcessedReferences, 
+<<<<<<< HEAD
       initialProcessedBenefits, initialProcessedTips]);
+=======
+      initialProcessedBenefits, initialProcessedTips, processedBody]);
+>>>>>>> 2ee6acc (update)
 
   // Fetch topic if not provided
   useEffect(() => {
@@ -683,7 +701,6 @@ export default function AyurvedaDetail({
   useEffect(() => {
     if (!topic?.image) {
       setHeroImageLoaded(true);
-      setContentLoaded(true);
       return;
     }
 
@@ -754,7 +771,11 @@ export default function AyurvedaDetail({
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
+<<<<<<< HEAD
   const reviewerDisplayName = getAuthorDisplayName(topic.reviewer);
+=======
+  const reviewerDisplayName = getReviewerDisplayName(topic.reviewer);
+>>>>>>> 2ee6acc (update)
   const reviewerSlug = getReviewerSlug(topic.reviewer);
 
   // Critical CSS for LCP
@@ -944,7 +965,7 @@ export default function AyurvedaDetail({
               </div>
             )}
 
-            {/* Body */}
+            {/* Body - FIXED: Single line className */}
             {contentLoaded && processedBody && (
               <div className="mb-12">
                 <h2 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6">

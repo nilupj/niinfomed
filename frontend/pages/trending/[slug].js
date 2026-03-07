@@ -534,4 +534,8 @@ export async function getStaticProps({ params }) {
       revalidate: 60 
     };
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 2ee6acc (update)

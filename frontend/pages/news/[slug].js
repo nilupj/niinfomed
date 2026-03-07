@@ -8,6 +8,10 @@ import Head from "next/head";
 import ShareButton from "../../components/ShareButton";
 import CookieConsent from "../../components/CookieConsent";
 import CommentSection from "../../components/CommentSection";
+<<<<<<< HEAD
+=======
+import ImageWithFallback from "../../components/ImageWithFallback";
+>>>>>>> 2ee6acc (update)
 import {
   fetchNewsBySlug,
   fetchRelatedNews,
@@ -24,10 +28,13 @@ import {
   getTimeAgo,
   tryEndpoints
 } from "../../utils/api";
+<<<<<<< HEAD
 
 /* =========================================================
    ✅ Date Display Functions (using shared utilities)
 ========================================================= */
+=======
+>>>>>>> 2ee6acc (update)
 
 /* =========================================================
    ✅ Author/Reviewer Helper Functions
@@ -529,6 +536,10 @@ export default function NewsArticle({
     if (rawBody || rawReferences) {
       processAllContent();
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [rawBody, rawReferences, safeCMS, initialProcessedBody, initialProcessedReferences]);
 
   /* ✅ Mark content as loaded when hero image loads */
@@ -779,19 +790,14 @@ export default function NewsArticle({
             <article className="above-fold">
               {/* Hero Image */}
               <div className="relative w-full h-64 md:h-96 rounded-2xl overflow-hidden shadow-lg mb-6 hero-container">
-                <img
+                <ImageWithFallback
                   src={mainImageUrl}
                   alt={pageArticle.title}
                   className="w-full h-full object-cover"
-                  loading="eager"
-                  decoding="async"
                   width={1200}
                   height={630}
-                  onLoad={() => setHeroImageLoaded(true)}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = fallbackImage;
-                  }}
+                  priority={true}
+                  fallbackSrc={fallbackImage}
                 />
               </div>
 
@@ -1078,18 +1084,13 @@ export default function NewsArticle({
                           >
                             <div className="flex gap-3 items-start">
                               <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                                <img
+                                <ImageWithFallback
                                   src={relatedImage}
                                   alt={related.title}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  loading="lazy"
-                                  decoding="async"
                                   width={80}
                                   height={64}
-                                  onError={(e) => {
-                                    e.currentTarget.onerror = null;
-                                    e.currentTarget.src = fallbackImage;
-                                  }}
+                                  fallbackSrc={fallbackImage}
                                 />
                               </div>
                               <div>
@@ -1160,18 +1161,20 @@ export default function NewsArticle({
                       prefetch={false}
                     >
                       <div className="h-48 w-full overflow-hidden">
-                        <img
+                        <ImageWithFallback
                           src={relatedImage}
                           alt={related.title}
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                          decoding="async"
                           width={400}
                           height={240}
+<<<<<<< HEAD
                           onError={(e) => {
                             e.currentTarget.onerror = null;
                             e.currentTarget.src = fallbackImage;
                           }}
+=======
+                          fallbackSrc={fallbackImage}
+>>>>>>> 2ee6acc (update)
                         />
                       </div>
                       <div className="p-4">

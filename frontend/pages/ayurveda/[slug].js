@@ -2,12 +2,14 @@
 import { useRouter } from "next/router";
 import Link from "next/link";
 import SEO from "../../components/SEO";
-import axios from "axios";
 import CommentSection from "../../components/CommentSection";
 import ReferencesSection from "../../components/ReferencesSection";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Image from "next/image";
+<<<<<<< HEAD
 import { useMemo, useCallback } from "react";
+=======
+>>>>>>> 2ee6acc (update)
 import {
   getProxiedImageUrl,
   fixWagtailInternalLinks,
@@ -172,9 +174,10 @@ const DateDisplay = ({
     return (
       <div
         className={`flex flex-wrap items-center gap-2 text-sm text-gray-600 ${className}`}
+        aria-label="Publication dates"
       >
         <svg
-          className="w-4 h-4"
+          className="w-4 h-4 flex-shrink-0"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -604,6 +607,23 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
         description={topic.summary?.substring(0, 160) || topic.title}
         image={mainImageUrl}
         url={`https://niinfomed.com/ayurveda/${topic.slug}`}
+<<<<<<< HEAD
+=======
+        openGraph={{
+          type: 'article',
+          article: {
+            publishedTime: publishedDate?.toISOString(),
+            modifiedTime: updatedDate?.toISOString(),
+            authors: authorDisplayName ? [authorDisplayName] : [],
+            tags: ['ayurveda', 'alternative medicine', topic.category?.name].filter(Boolean),
+          },
+        }}
+        twitter={{
+          handle: '@niinfomed',
+          site: '@niinfomed',
+          cardType: 'summary_large_image',
+        }}
+>>>>>>> 2ee6acc (update)
       />
 
       {/* Processing error alert */}
@@ -631,9 +651,16 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
           {topic.category?.name && (
             <>
               <span aria-hidden="true">/</span>
+<<<<<<< HEAD
               <span className="text-gray-700 font-medium">
+=======
+              <Link 
+                href={`/ayurveda/categories/${topic.category.slug}`}
+                className="hover:text-gray-800 transition-colors"
+              >
+>>>>>>> 2ee6acc (update)
                 {topic.category.name}
-              </span>
+              </Link>
             </>
           )}
         </nav>
@@ -642,6 +669,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
           {/* ARTICLE */}
           <article className="min-w-0">
             {/* Image */}
+<<<<<<< HEAD
             <div className="relative w-full h-[220px] sm:h-[320px] md:h-[420px] rounded-2xl overflow-hidden shadow-lg mb-6 bg-gray-100">
               <Image
                 src={mainImageUrl}
@@ -656,6 +684,24 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
                 }}
               />
             </div>
+=======
+            {topic.image && (
+              <div className="relative w-full h-[220px] sm:h-[320px] md:h-[420px] rounded-2xl overflow-hidden shadow-lg mb-6 bg-gray-100">
+                <Image
+                  src={mainImageUrl}
+                  alt={topic.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 900px"
+                  className="object-cover"
+                  priority
+                  unoptimized={mainImageUrl?.includes('cms-media') || mainImageUrl?.includes('127.0.0.1')}
+                  onError={(e) => {
+                    e.target.src = fallbackImage;
+                  }}
+                />
+              </div>
+            )}
+>>>>>>> 2ee6acc (update)
 
             {/* Title */}
             <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight mb-3">
@@ -748,7 +794,11 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
               </div>
             )}
 
+<<<<<<< HEAD
             {/* Body */}
+=======
+            {/* Body - FIXED: Single line className */}
+>>>>>>> 2ee6acc (update)
             {bodyWithIds && (
               <div className="mb-12">
                 <h2 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6">
@@ -756,11 +806,15 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
                 </h2>
 
                 <div
+<<<<<<< HEAD
                   className="prose prose-base sm:prose-lg max-w-none
                              prose-img:w-full prose-img:h-auto
                              prose-img:rounded-xl prose-img:shadow
                              prose-headings:scroll-mt-24
                              prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline"
+=======
+                  className="prose prose-base sm:prose-lg max-w-none prose-img:w-full prose-img:h-auto prose-img:rounded-xl prose-img:shadow prose-headings:scroll-mt-24 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline"
+>>>>>>> 2ee6acc (update)
                   dangerouslySetInnerHTML={{ __html: bodyWithIds }}
                 />
               </div>
@@ -809,6 +863,7 @@ export default function AyurvedaDetail({ topic, relatedTopics, imageMap, error }
                           key={item.id || item.slug}
                           href={`/ayurveda/${item.slug}`}
                           className="block group"
+                          prefetch={false}
                         >
                           <div className="flex gap-3 items-start">
                             <div className="w-20 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">

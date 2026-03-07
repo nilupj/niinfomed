@@ -287,4 +287,8 @@ export async function getStaticProps() {
       revalidate: 60, // Try again in 60 seconds
     };
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 2ee6acc (update)

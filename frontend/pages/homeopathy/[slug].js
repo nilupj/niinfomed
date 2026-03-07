@@ -916,7 +916,7 @@ export default function HomeopathyTopicPage({
               </div>
             )}
 
-            {/* Body */}
+            {/* Body - FIXED: Removed multiline className */}
             {contentLoaded && finalBodyHtml && (
               <div className="mb-12">
                 <h2 className="text-xl sm:text-2xl font-bold mb-5 sm:mb-6">
@@ -924,11 +924,15 @@ export default function HomeopathyTopicPage({
                 </h2>
 
                 <div
+<<<<<<< HEAD
                   className="prose prose-base sm:prose-lg max-w-none
                              prose-img:w-full prose-img:h-auto
                              prose-img:rounded-xl prose-img:shadow
                              prose-headings:scroll-mt-24
                              prose-a:text-green-600 prose-a:no-underline hover:prose-a:underline"
+=======
+                  className="prose prose-base sm:prose-lg max-w-none prose-img:w-full prose-img:h-auto prose-img:rounded-xl prose-img:shadow prose-headings:scroll-mt-24 prose-a:text-green-600 prose-a:no-underline hover:prose-a:underline"
+>>>>>>> 2ee6acc (update)
                   dangerouslySetInnerHTML={{ __html: bodyWithIds }}
                 />
               </div>
@@ -1116,7 +1120,7 @@ export default function HomeopathyTopicPage({
                 const relatedImage = getProxiedImageUrl(related.image) || fallbackImage;
                 
                 return (
-                  <div key={related.id} className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                  <div key={related.id || related.slug} className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
                     <Link href={`/homeopathy/${related.slug}`} prefetch={false}>
                       <div className="relative h-40 w-full">
                         <img

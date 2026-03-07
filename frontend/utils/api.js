@@ -1177,6 +1177,7 @@ export const fetchPagePaths = async () => {
       }
     }
     
+<<<<<<< HEAD
     return [];
   } catch (error) {
     console.error('Error fetching page paths:', error);
@@ -1185,3 +1186,13 @@ export const fetchPagePaths = async () => {
 };
 
 export default api;
+=======
+    return [];
+  } catch (error) {
+    console.error('Error fetching page paths:', error);
+    return [];
+  }
+};
+
+export default api;
+>>>>>>> 2ee6acc (update)

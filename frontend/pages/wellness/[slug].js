@@ -649,7 +649,11 @@ export default function WellnessDetail({
     return () => {
       mounted = false;
     };
+<<<<<<< HEAD
   }, [topic, safeCMS, initialProcessedBody, initialProcessedReferences, initialProcessedBenefits, initialProcessedTips]);
+=======
+  }, [topic, safeCMS, initialProcessedBody, initialProcessedReferences, initialProcessedBenefits, initialProcessedTips, processedBody]);
+>>>>>>> 2ee6acc (update)
 
   // Fetch topic if not provided
   useEffect(() => {

@@ -2,7 +2,6 @@
 import { useRouter } from 'next/router';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { NextSeo } from 'next-seo';
 import Head from 'next/head';
 import {
@@ -584,7 +583,7 @@ export default function VideoPage({ video: initialVideo, relatedVideos: initialR
                 {/* Description */}
                 {video.description && (
                   <div 
-                    className="prose max-w-none"
+                    className="prose prose-lg max-w-none"
                     dangerouslySetInnerHTML={{ __html: video.description }}
                   />
                 )}
@@ -603,7 +602,7 @@ export default function VideoPage({ video: initialVideo, relatedVideos: initialR
                   <div className="mt-8 pt-6 border-t border-gray-200">
                     <h2 className="text-xl font-bold mb-4">Transcript</h2>
                     <div 
-                      className="prose max-w-none text-gray-700"
+                      className="prose prose-lg max-w-none text-gray-700"
                       dangerouslySetInnerHTML={{ __html: video.transcript }}
                     />
                   </div>
