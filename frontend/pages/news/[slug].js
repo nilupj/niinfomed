@@ -8,10 +8,7 @@ import Head from "next/head";
 import ShareButton from "../../components/ShareButton";
 import CookieConsent from "../../components/CookieConsent";
 import CommentSection from "../../components/CommentSection";
-<<<<<<< HEAD
-=======
 import ImageWithFallback from "../../components/ImageWithFallback";
->>>>>>> 2ee6acc (update)
 import {
   fetchNewsBySlug,
   fetchRelatedNews,
@@ -28,13 +25,6 @@ import {
   getTimeAgo,
   tryEndpoints
 } from "../../utils/api";
-<<<<<<< HEAD
-
-/* =========================================================
-   ✅ Date Display Functions (using shared utilities)
-========================================================= */
-=======
->>>>>>> 2ee6acc (update)
 
 /* =========================================================
    ✅ Author/Reviewer Helper Functions
@@ -1167,14 +1157,7 @@ export default function NewsArticle({
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                           width={400}
                           height={240}
-<<<<<<< HEAD
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.src = fallbackImage;
-                          }}
-=======
                           fallbackSrc={fallbackImage}
->>>>>>> 2ee6acc (update)
                         />
                       </div>
                       <div className="p-4">

@@ -1,4 +1,4 @@
-// pages/ayurveda/[slug].js
+// pages/yoga-exercise/[slug].js
 import { useRouter } from "next/router";
 import Link from "next/link";
 import SEO from "../../components/SEO";
@@ -8,20 +8,18 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import Head from "next/head";
 import ImageWithFallback from "../../components/ImageWithFallback";
 import {
-  fetchAyurvedaTopic,
-  fetchAyurvedaTopics,
   getProxiedImageUrl,
-  getSafeCMSUrl,
-  parseDateSafe,
-  formatDateDisplay,
-  getTimeAgo,
   fixWagtailInternalLinks,
   replaceEmbedImages,
   extractHeadings,
   slugify,
   addHeadingIds,
+  getSafeCMSUrl,
   fixMediaUrls,
   tryEndpoints,
+  parseDateSafe,
+  formatDateDisplay,
+  getTimeAgo,
   extractEmbedImageIds,
   fetchWagtailImageUrl
 } from "../../utils/api";
@@ -360,7 +358,7 @@ const TableOfContents = ({ headings = [] }) => {
             <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
               <button
                 onClick={() => scrollToHeading(h.id)}
-                className="text-gray-700 hover:text-amber-600 hover:underline text-left w-full transition-colors"
+                className="text-gray-700 hover:text-purple-600 hover:underline text-left w-full transition-colors"
                 aria-label={`Scroll to ${h.text}`}
               >
                 {h.text}
@@ -391,7 +389,7 @@ const ContentMetadata = ({
   return (
     <div className="flex flex-wrap gap-3 mb-6">
       {category?.name && (
-        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-3 py-1.5 rounded-full text-sm font-medium">
+        <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 px-3 py-1.5 rounded-full text-sm font-medium">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
@@ -439,7 +437,7 @@ const ContentMetadata = ({
 };
 
 /* =========================================================
-   ✅ Helper Functions
+   ✅ Author/Reviewer Helper Functions
 ========================================================= */
 
 const getAuthorDisplayName = (author) => {
@@ -459,14 +457,11 @@ const getAuthorSlug = (author) => {
   return null;
 };
 
-<<<<<<< HEAD
-=======
 const getReviewerDisplayName = (author) => {
   if (!author) return null;
   return author.name || author.display_name || author.full_name || null;
 };
 
->>>>>>> 2ee6acc (update)
 const getReviewerSlug = (reviewer) => {
   if (!reviewer) return null;
   if (reviewer.slug) return reviewer.slug;
@@ -478,6 +473,24 @@ const getReviewerSlug = (reviewer) => {
   }
   return null;
 };
+
+/* =========================================================
+   ✅ Skeleton Loader Component
+========================================================= */
+const SkeletonLoader = () => (
+  <div className="container mx-auto px-4 py-16">
+    <div className="animate-pulse">
+      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
+      <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+      <div className="h-64 bg-gray-200 rounded mb-8"></div>
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-4 bg-gray-200 rounded"></div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
 
 /* =========================================================
    ✅ PROCESS HTML CONTENT
@@ -506,35 +519,17 @@ const processHtmlContent = async (html, safeBaseUrl, imageMap = {}) => {
 };
 
 /* =========================================================
-   ✅ Skeleton Loader Component
-========================================================= */
-const SkeletonLoader = () => (
-  <div className="container mx-auto px-4 py-16">
-    <div className="animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
-      <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
-      <div className="h-64 bg-gray-200 rounded mb-8"></div>
-      <div className="space-y-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-4 bg-gray-200 rounded"></div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-/* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 
-export default function AyurvedaDetail({ 
+export default function YogaDetail({ 
   topic: initialTopic, 
   relatedTopics: initialRelated,
   imageMap = {},
   processedBody: initialProcessedBody,
   processedReferences: initialProcessedReferences,
   processedBenefits: initialProcessedBenefits,
-  processedTips: initialProcessedTips,
+  processedInstructions: initialProcessedInstructions,
   headings: initialHeadings,
   mainImageUrl: initialMainImageUrl,
   error
@@ -550,7 +545,7 @@ export default function AyurvedaDetail({
   const [processedBody, setProcessedBody] = useState(initialProcessedBody || "");
   const [processedReferences, setProcessedReferences] = useState(initialProcessedReferences || "");
   const [processedBenefits, setProcessedBenefits] = useState(initialProcessedBenefits || "");
-  const [processedTips, setProcessedTips] = useState(initialProcessedTips || "");
+  const [processedInstructions, setProcessedInstructions] = useState(initialProcessedInstructions || "");
   const [headings, setHeadings] = useState(initialHeadings || []);
   
   const safeCMS = useMemo(() => getSafeCMSUrl(), []);
@@ -576,9 +571,9 @@ export default function AyurvedaDetail({
     [topic?.benefits]
   );
 
-  const rawTips = useMemo(
-    () => topic?.tips || "",
-    [topic?.tips]
+  const rawInstructions = useMemo(
+    () => topic?.instructions || "",
+    [topic?.instructions]
   );
 
   /* =========================================================
@@ -586,7 +581,7 @@ export default function AyurvedaDetail({
   ========================================================= */
   useEffect(() => {
     if (initialProcessedBody && initialProcessedReferences && 
-        initialProcessedBenefits && initialProcessedTips) {
+        initialProcessedBenefits && initialProcessedInstructions) {
       setContentLoaded(true);
       return;
     }
@@ -597,12 +592,11 @@ export default function AyurvedaDetail({
       if (!topic) return;
 
       try {
-        // Process all sections in parallel
         const sections = [
           { key: 'body', content: topic.body, setter: setProcessedBody },
           { key: 'references', content: topic.references, setter: setProcessedReferences },
           { key: 'benefits', content: topic.benefits, setter: setProcessedBenefits },
-          { key: 'tips', content: topic.tips, setter: setProcessedTips }
+          { key: 'instructions', content: topic.instructions, setter: setProcessedInstructions }
         ];
 
         const results = await Promise.allSettled(
@@ -630,19 +624,10 @@ export default function AyurvedaDetail({
           });
 
           // Extract headings from body
-<<<<<<< HEAD
-          if (processedBody || topic.body) {
-            const bodyContent = processedBody || topic.body;
-            if (bodyContent) {
-              const extractedHeadings = extractHeadings(bodyContent);
-              setHeadings(extractedHeadings);
-            }
-=======
           const bodyContent = processedBody || topic.body || "";
           if (bodyContent) {
             const extractedHeadings = extractHeadings(bodyContent);
             setHeadings(extractedHeadings);
->>>>>>> 2ee6acc (update)
           }
           
           setContentLoaded(true);
@@ -664,11 +649,7 @@ export default function AyurvedaDetail({
       mounted = false;
     };
   }, [topic, safeCMS, imageMap, initialProcessedBody, initialProcessedReferences, 
-<<<<<<< HEAD
-      initialProcessedBenefits, initialProcessedTips]);
-=======
-      initialProcessedBenefits, initialProcessedTips, processedBody]);
->>>>>>> 2ee6acc (update)
+      initialProcessedBenefits, initialProcessedInstructions, processedBody]);
 
   // Fetch topic if not provided
   useEffect(() => {
@@ -676,14 +657,23 @@ export default function AyurvedaDetail({
       const fetchData = async () => {
         try {
           setLoading(true);
-          const topicData = await fetchAyurvedaTopic(router.query.slug);
           
-          if (topicData) {
+          // This would need a proper fetchYogaTopic function
+          // For now, using a placeholder
+          const baseUrl = getSafeCMSUrl();
+          const response = await fetch(`${baseUrl}/api/yoga/topics/${router.query.slug}/`);
+          
+          if (response.ok) {
+            const topicData = await response.json();
             setTopic(topicData);
             
             // Fetch related topics
-            const topicsList = await fetchAyurvedaTopics(6);
-            setRelatedTopics(topicsList.filter(t => t.slug !== router.query.slug).slice(0, 3));
+            const relatedRes = await fetch(`${baseUrl}/api/yoga/topics/?limit=6`);
+            if (relatedRes.ok) {
+              const relatedData = await relatedRes.json();
+              const topicsList = relatedData.results || relatedData.items || relatedData;
+              setRelatedTopics(topicsList.filter(t => t.slug !== router.query.slug).slice(0, 3));
+            }
           } else {
             throw new Error("Topic not found");
           }
@@ -707,7 +697,7 @@ export default function AyurvedaDetail({
     const imageLoader = typeof window !== 'undefined' ? new window.Image() : null;
     
     if (imageLoader) {
-      const imageUrl = getProxiedImageUrl(topic.image);
+      const imageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image);
       imageLoader.src = imageUrl;
       imageLoader.onload = () => {
         setHeroImageLoaded(true);
@@ -718,21 +708,21 @@ export default function AyurvedaDetail({
     } else {
       setHeroImageLoaded(true);
     }
-  }, [topic?.image]);
+  }, [topic?.image, initialMainImageUrl]);
 
   if (error) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-red-800 mb-3">
-            Error Loading Ayurveda Topic
+            Error Loading Yoga Topic
           </h1>
           <p className="text-red-700 mb-6">{error}</p>
           <Link
-            href="/ayurveda"
+            href="/yoga-exercise"
             className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
-            ← Browse All Ayurveda Topics
+            ← Browse All Yoga Topics
           </Link>
         </div>
       </div>
@@ -748,16 +738,16 @@ export default function AyurvedaDetail({
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg shadow-sm max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-yellow-800 mb-3">
-            Ayurveda Topic Not Found
+            Yoga Topic Not Found
           </h1>
           <p className="text-yellow-700 mb-6">
-            This ayurveda topic does not exist or may have been removed.
+            This yoga topic does not exist or may have been removed.
           </p>
           <Link
-            href="/ayurveda"
+            href="/yoga-exercise"
             className="inline-flex items-center px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
           >
-            ← Browse All Ayurveda Topics
+            ← Browse All Yoga Topics
           </Link>
         </div>
       </div>
@@ -765,17 +755,13 @@ export default function AyurvedaDetail({
   }
 
   const fallbackImage =
-    "https://images.unsplash.com/photo-1542736667-069246bdbc6d?auto=format&fit=crop&w=1200&h=630&q=75";
+    "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&h=630&q=75";
 
   const mainImageUrl = initialMainImageUrl || getProxiedImageUrl(topic.image) || fallbackImage;
 
   const authorDisplayName = getAuthorDisplayName(topic.author);
   const authorSlug = getAuthorSlug(topic.author);
-<<<<<<< HEAD
-  const reviewerDisplayName = getAuthorDisplayName(topic.reviewer);
-=======
   const reviewerDisplayName = getReviewerDisplayName(topic.reviewer);
->>>>>>> 2ee6acc (update)
   const reviewerSlug = getReviewerSlug(topic.reviewer);
 
   // Critical CSS for LCP
@@ -808,17 +794,17 @@ export default function AyurvedaDetail({
       </Head>
 
       <SEO
-        title={`${topic.title} - Ayurveda - Niinfomed`}
+        title={`${topic.title} - Yoga & Exercise - Niinfomed`}
         description={topic.summary?.substring(0, 160) || topic.title}
         image={mainImageUrl}
-        url={`https://niinfomed.com/ayurveda/${topic.slug}`}
+        url={`https://niinfomed.com/yoga-exercise/${topic.slug}`}
         openGraph={{
           type: 'article',
           article: {
             publishedTime: publishedDate?.toISOString(),
             modifiedTime: updatedDate?.toISOString(),
             authors: authorDisplayName ? [authorDisplayName] : [],
-            tags: ['ayurveda', 'alternative medicine', topic.category?.name].filter(Boolean),
+            tags: ['yoga', 'exercise', 'fitness', 'wellness', topic.category?.name].filter(Boolean),
           },
         }}
         twitter={{
@@ -828,6 +814,7 @@ export default function AyurvedaDetail({
         }}
       />
 
+      {/* Main Container */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb */}
         <nav className="text-sm text-gray-500 mb-5 flex flex-wrap gap-1 above-fold" aria-label="Breadcrumb">
@@ -835,14 +822,14 @@ export default function AyurvedaDetail({
             Home
           </Link>
           <span aria-hidden="true">/</span>
-          <Link href="/ayurveda" className="hover:text-gray-800 transition-colors">
-            Ayurveda
+          <Link href="/yoga-exercise" className="hover:text-gray-800 transition-colors">
+            Yoga & Exercise
           </Link>
           {topic.category?.name && (
             <>
               <span aria-hidden="true">/</span>
               <Link 
-                href={`/ayurveda/categories/${topic.category.slug}`}
+                href={`/yoga-exercise/categories/${topic.category.slug}`}
                 className="hover:text-gray-800 transition-colors"
               >
                 {topic.category.name}
@@ -868,6 +855,7 @@ export default function AyurvedaDetail({
                   width={1200}
                   height={630}
                   priority={true}
+                  fallbackSrc={fallbackImage}
                 />
               </div>
             )}
@@ -884,7 +872,7 @@ export default function AyurvedaDetail({
               </p>
             )}
 
-            {/* Tags + Compact Published */}
+            {/* Content Metadata */}
             <div className="mb-4">
               <ContentMetadata 
                 category={topic.category}
@@ -951,7 +939,7 @@ export default function AyurvedaDetail({
 
             {/* Summary */}
             {topic.summary && (
-              <div className="mb-8 p-5 sm:p-6 bg-amber-50 border border-amber-200 rounded-2xl">
+              <div className="mb-8 p-5 sm:p-6 bg-purple-50 border border-purple-200 rounded-2xl">
                 <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
                   {topic.summary}
                 </p>
@@ -973,7 +961,7 @@ export default function AyurvedaDetail({
                 </h2>
 
                 <div
-                  className="prose prose-base sm:prose-lg max-w-none prose-img:w-full prose-img:h-auto prose-img:rounded-xl prose-img:shadow prose-headings:scroll-mt-24 prose-a:text-amber-600 prose-a:no-underline hover:prose-a:underline"
+                  className="prose prose-base sm:prose-lg max-w-none prose-img:w-full prose-img:h-auto prose-img:rounded-xl prose-img:shadow prose-headings:scroll-mt-24 prose-a:text-purple-600 prose-a:no-underline hover:prose-a:underline"
                   dangerouslySetInnerHTML={{ __html: processedBody }}
                 />
               </div>
@@ -992,15 +980,15 @@ export default function AyurvedaDetail({
               </div>
             )}
 
-            {/* Tips */}
-            {contentLoaded && processedTips && (
+            {/* Instructions */}
+            {contentLoaded && processedInstructions && (
               <div className="mb-8 p-5 sm:p-6 bg-yellow-50 border border-yellow-200 rounded-2xl">
                 <h3 className="text-xl font-bold mb-4 text-yellow-800">
-                  Tips & Recommendations
+                  Step-by-Step Instructions
                 </h3>
                 <div
                   className="prose prose-base sm:prose-lg max-w-none"
-                  dangerouslySetInnerHTML={{ __html: processedTips }}
+                  dangerouslySetInnerHTML={{ __html: processedInstructions }}
                 />
               </div>
             )}
@@ -1015,17 +1003,17 @@ export default function AyurvedaDetail({
             {/* Disclaimer */}
             <div className="mt-8 p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-xl">
               <p className="text-sm text-blue-700">
-                <strong>Ayurvedic Disclaimer:</strong> This information is for
-                educational purposes only and not a substitute for medical
-                advice. Consult a qualified practitioner before starting any
-                treatment.
+                <strong>Safety Disclaimer:</strong> This information is for
+                educational purposes only. Consult with a qualified yoga instructor
+                or healthcare provider before starting any new exercise program,
+                especially if you have pre-existing health conditions.
               </p>
             </div>
 
-            {/* Comments - Load last */}
+            {/* Comments */}
             {contentLoaded && (
               <CommentSection
-                contentType="ayurveda"
+                contentType="yoga"
                 contentSlug={topic.slug}
                 pageTitle={topic.title}
               />
@@ -1092,7 +1080,7 @@ export default function AyurvedaDetail({
                       return (
                         <Link
                           key={item.id || item.slug}
-                          href={`/ayurveda/${item.slug}`}
+                          href={`/yoga-exercise/${item.slug}`}
                           className="block group"
                           prefetch={false}
                         >
@@ -1104,16 +1092,17 @@ export default function AyurvedaDetail({
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 width={80}
                                 height={64}
+                                fallbackSrc={fallbackImage}
                               />
                             </div>
 
                             <div className="min-w-0">
-                              <p className="font-semibold text-sm text-gray-800 group-hover:text-amber-600 line-clamp-2">
+                              <p className="font-semibold text-sm text-gray-800 group-hover:text-purple-600 line-clamp-2">
                                 {item.title}
                               </p>
                               <p className="text-xs text-gray-500 line-clamp-2 mt-1">
                                 {item.summary?.substring(0, 80) ||
-                                  "Learn more about Ayurveda"}
+                                  "Learn more about yoga"}
                               </p>
                             </div>
                           </div>
@@ -1124,10 +1113,10 @@ export default function AyurvedaDetail({
 
                   <div className="mt-5">
                     <Link
-                      href="/ayurveda"
-                      className="inline-flex w-full justify-center items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                      href="/yoga-exercise"
+                      className="inline-flex w-full justify-center items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                     >
-                      View All Ayurveda Topics
+                      View All Yoga Topics
                     </Link>
                   </div>
                 </div>
@@ -1139,7 +1128,7 @@ export default function AyurvedaDetail({
         {/* Mobile Related Topics */}
         {relatedTopics?.length > 0 && contentLoaded && (
           <div className="mt-12 lg:hidden">
-            <h2 className="text-2xl font-bold mb-6">Related Ayurveda Topics</h2>
+            <h2 className="text-2xl font-bold mb-6">Related Yoga Topics</h2>
             <div className="grid md:grid-cols-2 gap-6">
               {relatedTopics.slice(0, 3).map((item) => {
                 const relatedImage = getProxiedImageUrl(item.image) || fallbackImage;
@@ -1147,7 +1136,7 @@ export default function AyurvedaDetail({
                 return (
                   <Link
                     key={item.id || item.slug}
-                    href={`/ayurveda/${item.slug}`}
+                    href={`/yoga-exercise/${item.slug}`}
                     className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                     prefetch={false}
                   >
@@ -1158,6 +1147,7 @@ export default function AyurvedaDetail({
                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                         width={400}
                         height={240}
+                        fallbackSrc={fallbackImage}
                       />
                     </div>
                     <div className="p-4">
@@ -1180,15 +1170,15 @@ export default function AyurvedaDetail({
 
       <style jsx global>{`
         .prose a {
-          color: #d97706;
+          color: #9333ea;
           text-decoration: underline;
           text-underline-offset: 2px;
         }
         .prose a:hover {
-          color: #b45309;
+          color: #7e22ce;
         }
         .scroll-mt-24 {
-          scroll-margin-top: 6rem;
+          scroll-margin-top: 5rem;
         }
       `}</style>
     </>
@@ -1203,7 +1193,7 @@ export async function getStaticPaths() {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     
-    const response = await fetch(`${baseUrl}/api/ayurveda/topics/`);
+    const response = await fetch(`${baseUrl}/api/yoga/topics/`);
     const data = await response.json();
     
     const topics = data.results || data.items || data;
@@ -1214,13 +1204,13 @@ export async function getStaticPaths() {
         params: { slug: t.slug },
       }));
 
-    console.log(`✅ Generated ${paths.length} ayurveda paths`);
+    console.log(`✅ Generated ${paths.length} yoga paths`);
     return { 
       paths, 
       fallback: "blocking" 
     };
   } catch (error) {
-    console.error("Error fetching ayurveda paths:", error);
+    console.error("Error fetching yoga paths:", error);
     return { 
       paths: [], 
       fallback: "blocking" 
@@ -1231,31 +1221,37 @@ export async function getStaticPaths() {
 export async function getStaticProps({ params }) {
   try {
     const start = Date.now();
+    const baseUrl = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
     const slug = params.slug;
 
-    console.log(`📡 Fetching ayurveda topic: ${slug} from Oracle CMS`);
+    console.log(`📡 Fetching yoga topic: ${slug} from Oracle CMS`);
 
-    const [topic, topicsList] = await Promise.allSettled([
-      fetchAyurvedaTopic(slug),
-      fetchAyurvedaTopics(6)
-    ]);
-
-    if (topic.status === 'rejected' || !topic.value) {
-      console.log(`❌ Ayurveda topic not found: ${slug}`);
+    // Fetch topic
+    const topicRes = await fetch(`${baseUrl}/api/yoga/topics/${slug}/`);
+    
+    if (!topicRes.ok) {
+      console.log(`❌ Yoga topic not found: ${slug}`);
       return { 
         notFound: true, 
         revalidate: 60 
       };
     }
 
-    const relatedTopics = topicsList.status === 'fulfilled'
-      ? topicsList.value.filter((t) => t.slug !== slug).slice(0, 3)
-      : [];
+    const topic = await topicRes.json();
 
-    const safeCMS = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
+    // Fetch related topics
+    const relatedRes = await fetch(`${baseUrl}/api/yoga/topics/?limit=6`);
+    const relatedData = await relatedRes.json();
+    const allTopics = relatedData.results || relatedData.items || relatedData;
+    
+    const relatedTopics = allTopics
+      .filter((t) => t.slug !== slug)
+      .slice(0, 3);
+
+    const safeCMS = baseUrl;
     
     // Extract image IDs for embed images
-    const ids = extractEmbedImageIds(topic.value.body || "");
+    const ids = extractEmbedImageIds(topic.body || "");
     const imageMap = {};
 
     await Promise.allSettled(
@@ -1269,11 +1265,11 @@ export async function getStaticProps({ params }) {
     let processedBody = "";
     let processedReferences = "";
     let processedBenefits = "";
-    let processedTips = "";
+    let processedInstructions = "";
     let headings = [];
     
-    if (topic.value.body) {
-      let processed = fixMediaUrls(topic.value.body || "", imageMap);
+    if (topic.body) {
+      let processed = fixMediaUrls(topic.body || "", imageMap);
       processed = await replaceEmbedImages(processed, safeCMS);
       processed = await fixWagtailInternalLinks(processed, safeCMS);
       processedBody = processed;
@@ -1283,54 +1279,54 @@ export async function getStaticProps({ params }) {
       processedBody = addHeadingIds(processed, headings);
     }
     
-    if (topic.value.references) {
-      let processed = fixMediaUrls(topic.value.references || "", imageMap);
+    if (topic.references) {
+      let processed = fixMediaUrls(topic.references || "", imageMap);
       processed = await fixWagtailInternalLinks(processed, safeCMS);
       processedReferences = processed;
     }
     
-    if (topic.value.benefits) {
-      let processed = fixMediaUrls(topic.value.benefits || "", imageMap);
+    if (topic.benefits) {
+      let processed = fixMediaUrls(topic.benefits || "", imageMap);
       processed = await fixWagtailInternalLinks(processed, safeCMS);
       processedBenefits = processed;
     }
     
-    if (topic.value.tips) {
-      let processed = fixMediaUrls(topic.value.tips || "", imageMap);
+    if (topic.instructions) {
+      let processed = fixMediaUrls(topic.instructions || "", imageMap);
       processed = await fixWagtailInternalLinks(processed, safeCMS);
-      processedTips = processed;
+      processedInstructions = processed;
     }
     
-    const mainImageUrl = getProxiedImageUrl(topic.value.image);
+    const mainImageUrl = getProxiedImageUrl(topic.image);
     
-    console.log(`✅ Generated ayurveda article ${slug} in ${Date.now() - start}ms`);
+    console.log(`✅ Generated yoga article ${slug} in ${Date.now() - start}ms`);
     
     return {
       props: {
-        topic: topic.value,
+        topic,
         relatedTopics,
         imageMap,
         processedBody,
         processedReferences,
         processedBenefits,
-        processedTips,
+        processedInstructions,
         headings,
         mainImageUrl
       },
-      revalidate: 3600, // Revalidate every hour
+      revalidate: 3600,
     };
   } catch (error) {
-    console.error(`Error fetching ayurveda article ${params.slug}:`, error);
+    console.error(`Error fetching yoga article ${params.slug}:`, error);
     return { 
       props: {
-        error: 'Failed to load ayurveda topic. Please try again later.',
+        error: 'Failed to load yoga topic. Please try again later.',
         topic: null,
         relatedTopics: [],
         imageMap: {},
         processedBody: '',
         processedReferences: '',
         processedBenefits: '',
-        processedTips: '',
+        processedInstructions: '',
         headings: [],
         mainImageUrl: ''
       },

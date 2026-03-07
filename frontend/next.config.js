@@ -1,9 +1,14 @@
 // next.config.js
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
+
+  // Fix monorepo tracing warning
+  outputFileTracingRoot: path.join(__dirname, '../../'),
 
   // Generate consistent build ID
   generateBuildId: async () => {

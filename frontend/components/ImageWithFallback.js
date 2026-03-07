@@ -65,8 +65,4 @@ export default function ImageWithFallback({
       {...props}
     />
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 2ee6acc (update)
