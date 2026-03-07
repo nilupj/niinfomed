@@ -19,24 +19,27 @@ import {
   addHeadingIds,
   tryEndpoints
 } from '../../utils/api';
-import ContentNav from '../../components/ContentNav';
 
 /* =========================================================
    ✅ MAIN COMPONENT
 ========================================================= */
 export default function ArticleDetail({ article: initialArticle, relatedArticles, error }) {
   const router = useRouter();
-  const [pageArticle, setPageArticle] = useState(initialArticle);
+  
+  // ✅ Safe state initialization with fallbacks
+  const [pageArticle, setPageArticle] = useState(initialArticle || null);
   const [loading, setLoading] = useState(!initialArticle);
   const [finalBodyHtml, setFinalBodyHtml] = useState("");
   const [finalReferencesHtml, setFinalReferencesHtml] = useState("");
   const [processingError, setProcessingError] = useState(null);
 
+  // ✅ Safe CMS URL with validation
   const safeCMS = useMemo(() => {
-    return process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
+    const url = process.env.NEXT_PUBLIC_CMS_API_URL || 'https://api.niinfomed.com';
+    return url.replace(/\/$/, ''); // Remove trailing slash
   }, []);
 
-  // Handle error state
+  // ✅ Handle error state first
   if (error) {
     return (
       <div className="container-custom py-12 text-center">
@@ -49,25 +52,26 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
     );
   }
 
-  /* ✅ Content processing hooks */
-  const rawBody = useMemo(
-    () => pageArticle?.body || "",
-    [pageArticle?.body]
-  );
+  // ✅ Safe memo with null checks
+  const rawBody = useMemo(() => {
+    if (!pageArticle?.body) return "";
+    return pageArticle.body;
+  }, [pageArticle?.body]);
 
-  const rawReferences = useMemo(
-    () => pageArticle?.references || "",
-    [pageArticle?.references]
-  );
+  const rawReferences = useMemo(() => {
+    if (!pageArticle?.references) return "";
+    return pageArticle.references;
+  }, [pageArticle?.references]);
 
   /* =========================================================
-     ✅ Body processing pipeline
+     ✅ Body processing pipeline with error handling
   ========================================================= */
   useEffect(() => {
     let mounted = true;
 
     const processContent = async () => {
-      if (!rawBody) {
+      // ✅ Skip if no content
+      if (!rawBody || rawBody.trim() === '') {
         setFinalBodyHtml('');
         return;
       }
@@ -77,14 +81,26 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
       try {
         console.log("🔄 Processing article body...");
         
-        // 1) Replace embed images
-        const withImages = await replaceEmbedImages(rawBody, safeCMS);
+        // 1) Replace embed images with error handling
+        let withImages = rawBody;
+        try {
+          withImages = await replaceEmbedImages(rawBody, safeCMS);
+        } catch (imgErr) {
+          console.error("Image replacement failed:", imgErr);
+          withImages = rawBody; // Fallback to original
+        }
         
-        // 2) Fix internal links
-        const withLinks = await fixWagtailInternalLinks(withImages, safeCMS);
+        // 2) Fix internal links with error handling
+        let withLinks = withImages;
+        try {
+          withLinks = await fixWagtailInternalLinks(withImages, safeCMS);
+        } catch (linkErr) {
+          console.error("Link fixing failed:", linkErr);
+          withLinks = withImages; // Fallback
+        }
         
         if (mounted) {
-          setFinalBodyHtml(withLinks);
+          setFinalBodyHtml(withLinks || '');
           console.log("✅ Article body processed");
         }
       } catch (err) {
@@ -103,12 +119,12 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
     };
   }, [rawBody, safeCMS]);
 
-  /* ✅ References processing */
+  /* ✅ References processing with error handling */
   useEffect(() => {
     let mounted = true;
 
     const processReferences = async () => {
-      if (!rawReferences) {
+      if (!rawReferences || rawReferences.trim() === '') {
         setFinalReferencesHtml('');
         return;
       }
@@ -117,13 +133,13 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
         console.log("🔄 Processing references...");
         const withLinks = await fixWagtailInternalLinks(rawReferences, safeCMS);
         if (mounted) {
-          setFinalReferencesHtml(withLinks);
+          setFinalReferencesHtml(withLinks || '');
           console.log("✅ References processed");
         }
       } catch (err) {
         console.error("❌ Error processing references:", err);
         if (mounted) {
-          setFinalReferencesHtml(rawReferences);
+          setFinalReferencesHtml(rawReferences); // Fallback
         }
       }
     };
@@ -135,13 +151,29 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
     };
   }, [rawReferences, safeCMS]);
 
-  const headings = useMemo(() => extractHeadings(finalBodyHtml), [finalBodyHtml]);
-  const bodyWithIds = useMemo(
-    () => addHeadingIds(finalBodyHtml, headings),
-    [finalBodyHtml, headings]
-  );
+  // ✅ Safe headings extraction
+  const headings = useMemo(() => {
+    if (!finalBodyHtml) return [];
+    try {
+      return extractHeadings(finalBodyHtml) || [];
+    } catch (e) {
+      console.error("Error extracting headings:", e);
+      return [];
+    }
+  }, [finalBodyHtml]);
 
-  // Loading state
+  // ✅ Safe body with IDs
+  const bodyWithIds = useMemo(() => {
+    if (!finalBodyHtml) return '';
+    try {
+      return addHeadingIds(finalBodyHtml, headings) || finalBodyHtml;
+    } catch (e) {
+      console.error("Error adding heading IDs:", e);
+      return finalBodyHtml;
+    }
+  }, [finalBodyHtml, headings]);
+
+  // ✅ Loading state
   if (router.isFallback || loading) {
     return (
       <div className="container-custom py-12">
@@ -160,8 +192,8 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
     );
   }
 
-  // Not found state
-  if (!pageArticle) {
+  // ✅ Not found state
+  if (!pageArticle || Object.keys(pageArticle).length === 0) {
     return (
       <div className="container-custom py-12 text-center">
         <h1 className="text-3xl font-bold text-neutral-800 mb-4">Article Not Found</h1>
@@ -173,42 +205,64 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
     );
   }
 
+  // ✅ Safe destructuring with fallbacks
   const {
-    title,
-    subtitle,
-    image,
-    author,
-    published_date,
-    updated_date,
-    tags,
-    category,
+    title = 'Untitled Article',
+    subtitle = '',
+    image = null,
+    author = null,
+    published_date = null,
+    updated_date = null,
+    tags = [],
+    category = null,
+    reviewer = null
   } = pageArticle;
 
-  // Format dates safely
-  const formattedPublishedDate = published_date 
-    ? new Date(published_date).toLocaleDateString('en-US', {
+  // ✅ Safe date formatting
+  const formattedPublishedDate = useMemo(() => {
+    if (!published_date) return null;
+    try {
+      return new Date(published_date).toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
-      })
-    : null;
+      });
+    } catch (e) {
+      console.error("Date formatting error:", e);
+      return null;
+    }
+  }, [published_date]);
 
-  const formattedUpdatedDate = updated_date
-    ? new Date(updated_date).toLocaleDateString('en-US', {
+  const formattedUpdatedDate = useMemo(() => {
+    if (!updated_date) return null;
+    try {
+      return new Date(updated_date).toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
-      })
-    : null;
+      });
+    } catch (e) {
+      console.error("Date formatting error:", e);
+      return null;
+    }
+  }, [updated_date]);
 
-  // SEO
+  // ✅ SEO data
   const pageTitle = title ? `${title} - Niinfomed` : 'Article - Niinfomed';
   const pageDescription = subtitle || `Read about ${title || 'health topics'} on Niinfomed.`;
   const pageUrl = typeof window !== "undefined"
     ? window.location.href
-    : `${process.env.NEXT_PUBLIC_SITE_URL || "https://niinfomed.com"}/articles/${router.query.slug}`;
+    : `${process.env.NEXT_PUBLIC_SITE_URL || "https://niinfomed.com"}/articles/${router.query.slug || ''}`;
 
-  const mainImageUrl = image ? getProxiedImageUrl(image) : "https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=1200&h=630";
+  const mainImageUrl = useMemo(() => {
+    if (!image) return "https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=1200&h=630";
+    try {
+      return getProxiedImageUrl(image);
+    } catch (e) {
+      console.error("Image URL error:", e);
+      return "https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=1200&h=630";
+    }
+  }, [image]);
 
   return (
     <>
@@ -231,10 +285,10 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
           siteName: "Niinfomed",
           type: 'article',
           article: {
-            publishedTime: published_date,
-            modifiedTime: updated_date,
+            publishedTime: published_date || undefined,
+            modifiedTime: updated_date || undefined,
             authors: author?.name ? [author.name] : [],
-            tags: tags || [],
+            tags: Array.isArray(tags) ? tags : [],
           },
         }}
         twitter={{
@@ -266,8 +320,8 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
             </li>
             {category && (
               <li className="flex items-center">
-                <Link href={`/categories/${category.slug}`} className="hover:text-primary transition-colors">
-                  {category.name}
+                <Link href={`/categories/${category.slug || ''}`} className="hover:text-primary transition-colors">
+                  {category.name || 'Category'}
                 </Link>
                 <svg className="w-3 h-3 mx-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -297,26 +351,26 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                 {subtitle && <p className="text-xl text-neutral-600 mb-4">{subtitle}</p>}
 
                 {/* Medical Reviewer */}
-                {pageArticle.reviewer && (
-                  <AuthorCard author={pageArticle.reviewer} label="Medically Reviewed by" isReviewer={true} />
+                {reviewer && (
+                  <AuthorCard author={reviewer} label="Medically Reviewed by" isReviewer={true} />
                 )}
 
                 <div className="flex flex-wrap items-center justify-between text-sm text-neutral-500 mb-6">
                   <div className="flex flex-wrap items-center">
                     {author && (
                       <div className="flex items-center mr-6 mb-2">
-                        <span className="font-medium">Written by {author.name}</span>
+                        <span className="font-medium">Written by {author.name || 'Author'}</span>
                         {author.credentials && <span>, {author.credentials}</span>}
                       </div>
                     )}
                     {formattedPublishedDate && (
                       <div className="mr-6 mb-2">
-                        <time dateTime={published_date}>Published: {formattedPublishedDate}</time>
+                        <time dateTime={published_date || ''}>Published: {formattedPublishedDate}</time>
                       </div>
                     )}
                     {formattedUpdatedDate && (
                       <div className="mb-2">
-                        <time dateTime={updated_date}>Updated: {formattedUpdatedDate}</time>
+                        <time dateTime={updated_date || ''}>Updated: {formattedUpdatedDate}</time>
                       </div>
                     )}
                   </div>
@@ -333,6 +387,9 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                     className="object-cover"
                     priority
                     unoptimized={mainImageUrl?.includes('cms-media') || mainImageUrl?.includes('127.0.0.1')}
+                    onError={(e) => {
+                      e.target.src = "https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?auto=format&fit=crop&w=1200&h=630";
+                    }}
                   />
                 </div>
               )}
@@ -346,20 +403,21 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                       <ul className="space-y-2 text-sm">
                         {headings.map((h, idx) => (
                           <li
-                            key={`${h.text}-${idx}`}
-                            className={h.level === 3 ? "ml-4" : ""}
+                            key={`${h?.text || idx}-${idx}`}
+                            className={h?.level === 3 ? "ml-4" : ""}
                           >
                             <a
-                              href={`#${slugify(h.text)}`}
+                              href={`#${slugify(h?.text || 'heading')}`}
                               className="text-neutral-700 hover:text-primary transition-colors"
                               onClick={(e) => {
                                 e.preventDefault();
-                                document.getElementById(slugify(h.text))?.scrollIntoView({
-                                  behavior: 'smooth'
-                                });
+                                const element = document.getElementById(slugify(h?.text || 'heading'));
+                                if (element) {
+                                  element.scrollIntoView({ behavior: 'smooth' });
+                                }
                               }}
                             >
-                              {h.text}
+                              {h?.text || 'Heading'}
                             </a>
                           </li>
                         ))}
@@ -369,23 +427,27 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                 )}
 
                 {/* Body Content */}
-                <div
-                  className="prose prose-lg max-w-none article-content"
-                  dangerouslySetInnerHTML={{ __html: bodyWithIds }}
-                />
+                {bodyWithIds ? (
+                  <div
+                    className="prose prose-lg max-w-none article-content"
+                    dangerouslySetInnerHTML={{ __html: bodyWithIds }}
+                  />
+                ) : (
+                  <p className="text-neutral-600">No content available for this article.</p>
+                )}
 
                 {/* Tags */}
-                {tags && tags.length > 0 && (
+                {Array.isArray(tags) && tags.length > 0 && (
                   <div className="mt-8 pt-6 border-t border-neutral-200">
                     <h3 className="text-lg font-semibold mb-2">Related Topics</h3>
                     <div className="flex flex-wrap gap-2">
                       {tags.map(tag => (
                         <Link
                           key={tag}
-                          href={`/tags/${tag.toLowerCase().replace(/\s+/g, '-')}`}
+                          href={`/tags/${tag?.toLowerCase().replace(/\s+/g, '-') || ''}`}
                           className="bg-neutral-100 text-neutral-700 px-3 py-1 rounded-full text-sm hover:bg-neutral-200 transition-colors"
                         >
-                          {tag}
+                          {tag || 'Tag'}
                         </Link>
                       ))}
                     </div>
@@ -401,17 +463,20 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                           <div className="relative w-16 h-16 rounded-full overflow-hidden">
                             <Image
                               src={getProxiedImageUrl(author.image)}
-                              alt={author.name}
+                              alt={author.name || 'Author'}
                               fill
                               className="object-cover"
                               unoptimized={true}
+                              onError={(e) => {
+                                e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100";
+                              }}
                             />
                           </div>
                         </div>
                       )}
                       <div>
                         <h3 className="text-lg font-semibold">About the Author</h3>
-                        <p className="text-sm font-medium">{author.name}{author.credentials && `, ${author.credentials}`}</p>
+                        <p className="text-sm font-medium">{author.name || 'Author'}{author.credentials && `, ${author.credentials}`}</p>
                         <p className="text-sm text-neutral-600 mt-1">{author.bio}</p>
                       </div>
                     </div>
@@ -451,26 +516,29 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
                 <h3 className="text-lg font-semibold text-primary mb-4">Related Articles</h3>
                 <div className="space-y-4">
                   {relatedArticles.map(article => (
-                    <div key={article.id} className="border-b border-neutral-100 pb-4 last:border-0 last:pb-0">
+                    <div key={article?.id || Math.random()} className="border-b border-neutral-100 pb-4 last:border-0 last:pb-0">
                       <h4 className="font-medium mb-1">
                         <Link
-                          href={`/articles/${article.slug}`}
+                          href={`/articles/${article?.slug || ''}`}
                           className="text-primary hover:text-primary-light transition-colors"
                         >
-                          {article.title}
+                          {article?.title || 'Related Article'}
                         </Link>
                       </h4>
-                      {article.image && (
+                      {article?.image && (
                         <div className="mb-2">
                           <img
                             src={getProxiedImageUrl(article.image)}
-                            alt={article.title}
+                            alt={article?.title || 'Article'}
                             className="w-full h-32 object-cover rounded"
                             loading="lazy"
+                            onError={(e) => {
+                              e.target.src = "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&h=500";
+                            }}
                           />
                         </div>
                       )}
-                      <p className="text-sm text-neutral-600 line-clamp-2">{article.summary}</p>
+                      <p className="text-sm text-neutral-600 line-clamp-2">{article?.summary || ''}</p>
                     </div>
                   ))}
                 </div>
@@ -546,7 +614,7 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
         </div>
 
         {/* More From Niinfomed */}
-        {!relatedArticles?.length && (
+        {(!relatedArticles || relatedArticles.length === 0) && (
           <div className="mt-12">
             <h2 className="section-title">More From Niinfomed</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -609,43 +677,65 @@ export default function ArticleDetail({ article: initialArticle, relatedArticles
   );
 }
 
-// Generate static paths
+// ✅ Generate static paths
 export async function getStaticPaths() {
   try {
     console.log("🔍 Fetching article paths from Oracle CMS...");
     
     const paths = await fetchArticlePaths();
     
-    const formattedPaths = paths.map(slug => ({
-      params: { slug: String(slug) }
-    })).filter(p => p.params.slug && p.params.slug !== 'undefined');
+    // ✅ Safe paths formatting
+    const formattedPaths = (Array.isArray(paths) ? paths : [])
+      .map(slug => ({
+        params: { slug: String(slug || '') }
+      }))
+      .filter(p => p.params.slug && p.params.slug !== '' && p.params.slug !== 'undefined');
 
     console.log(`✅ Generated ${formattedPaths.length} static paths for articles`);
     
     return {
       paths: formattedPaths,
-      fallback: 'blocking',
+      fallback: 'blocking', // 'blocking' instead of true for better SEO
     };
   } catch (error) {
-    console.error('Error fetching article paths:', error);
+    console.error('❌ Error fetching article paths:', error);
     return {
       paths: [],
-      fallback: 'blocking',
+      fallback: 'blocking', // Allow on-demand generation
     };
   }
 }
 
-// Get static props
+// ✅ Get static props with error handling
 export async function getStaticProps({ params, locale }) {
+  // ✅ Validate params
+  if (!params?.slug) {
+    return { notFound: true };
+  }
+
   try {
     console.log(`📡 Fetching article: ${params.slug} from Oracle CMS`);
     
-    const [article, related] = await Promise.all([
-      fetchArticle(params.slug, locale || 'en'),
-      fetchRelatedArticles(params.slug, 3)
-    ]);
+    // ✅ Promise.all with error handling
+    let article = null;
+    let related = [];
+    
+    try {
+      article = await fetchArticle(params.slug, locale || 'en');
+    } catch (articleErr) {
+      console.error(`Error fetching article ${params.slug}:`, articleErr);
+      article = null;
+    }
+    
+    try {
+      related = await fetchRelatedArticles(params.slug, 3);
+    } catch (relatedErr) {
+      console.error(`Error fetching related articles:`, relatedErr);
+      related = [];
+    }
 
-    if (!article) {
+    // ✅ If no article found, return 404
+    if (!article || Object.keys(article).length === 0) {
       console.warn(`Article not found for slug: ${params.slug}`);
       return { 
         notFound: true,
@@ -655,21 +745,23 @@ export async function getStaticProps({ params, locale }) {
 
     return {
       props: {
-        article,
-        relatedArticles: related || [],
+        article: article || null,
+        relatedArticles: Array.isArray(related) ? related : [],
+        error: null
       },
       revalidate: 3600, // Revalidate every hour
     };
   } catch (error) {
-    console.error(`Error fetching article ${params.slug}:`, error);
+    console.error(`❌ Critical error fetching article ${params.slug}:`, error);
     
+    // ✅ Return error state instead of throwing
     return {
       props: {
         article: null,
         relatedArticles: [],
         error: 'Failed to load article. Please try again later.'
       },
-      revalidate: 60,
+      revalidate: 60, // Try again after 1 minute
     };
   }
 }
